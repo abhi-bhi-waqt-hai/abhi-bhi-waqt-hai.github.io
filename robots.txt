@@ -1,0 +1,11 @@
+# अभी भी वक़्त है — There is still time.
+# Everything here is public and safe to index. There is no user data to
+# protect because none is ever collected: no account, no analytics, no
+# cookies, and the browser itself is told to block outgoing connections.
+#
+# This file said "NOTICED — for the person watching" until Round 35. That was
+# the previous project name AND the previous reader; this site speaks to the
+# person who is using. Nobody had read it since the rewrite.
+
+User-agent: *
+Allow: /

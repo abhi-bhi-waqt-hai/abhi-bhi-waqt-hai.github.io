@@ -1,0 +1,11 @@
+# A repository of BUILT artifacts. Git must not touch a single byte.
+#
+# The Content-Security-Policy on every page carries a SHA-256 hash of the
+# inline <style> Astro emitted (astro.config.mjs, experimental.csp). Rewrite
+# one line ending in one HTML file and that hash stops matching its own
+# stylesheet, the browser refuses the styles, and the page ships unstyled with
+# nothing but a console error to show for it. core.autocrlf is true on this
+# machine, so this is not hypothetical.
+#
+# -text disables all end-of-line conversion, in both directions.
+* -text
