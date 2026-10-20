@@ -1,0 +1,8 @@
+# अभी भी वक़्त है.
+User-agent: bitsexplorer
+Allow: /.well-known/
+Disallow: /
+
+User-agent: *
+Allow: /
+Sitemap: https://abhi-bhi-waqt-hai.github.io/sitemap.xml
