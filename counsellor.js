@@ -1,7 +1,8 @@
 /* ── The counsellor ────────────────────────────────────────────────────────
-   One chat, shared by the round button on every page and the /counsellor
-   page. A classic script, not a module, so it also runs when the built site
-   is opened straight from a folder.
+   The chat on /counsellor, the only page it lives on (every other "talk to
+   the counsellor" is a link there, never a pop-up). A classic script, not a
+   module, so it also runs when the built site is opened straight from a
+   folder.
 
    How replies are made: the conversation is sent to the AI service with the
    brief below. Two access lines (keys) are shared by everybody who uses the
@@ -129,56 +130,154 @@
     '- Nasha Mukt Bharat Abhiyaan, Ministry of Social Justice and Empowerment, launched 15 August 2020 in 272 districts, every district in India since 15 August 2023. It has reached 29.68 crore people, 11.43 crore of them young (about 38 in 100). No government source publishes recovery or completion rates.',
     '## About the site',
     '- Made by Badriprasath K.V, a Grade 8 (VIII-B) student at Amrita Vidyalayam, Erode, Tamil Nadu, as a solo project for STOGO Fest 2026-27 (theme "Reboot: The Rhythm of Life", Stream 02 Substance Safety, Track 01 Working Model). National round 25 November 2026, international round 14 January 2027.',
-    '- No account, no cookies, no tracking. Chat messages are sent to an AI service only to write replies; the site keeps the conversation only in this browser tab, and it disappears when the tab closes. The "Leave now" button (or pressing Escape twice) leaves instantly and clears the chat. A call to 14446 still shows in the phone’s call log.',
+    '- No account, no cookies, no tracking. Chat messages are sent to an AI service only to write replies; conversations are saved only in this browser on this device, and the person can open or delete them any time under History (the clock button at the top of the chat). Nothing is kept on any server. Everyone gets 20 messages every 24 hours (the counter is the small ring at the top of the chat). The "Leave now" button (or pressing Escape twice) leaves the site instantly. A call to 14446 still shows in the phone’s call log.',
     '- Every fact on the site links to its source on the Sources page (NDPS Act on indiankanoon.org, PIB releases, WHO guidance).',
   ].join('\n');
 
   /* ── elements ── */
-  var fab = document.querySelector('.cc-fab');
-  var dock = document.querySelector('.cc-dock');
-  var hint = document.querySelector('[data-cc-hint]');
   var log = root.querySelector('[data-cc-log]');
   var chipsEl = root.querySelector('[data-cc-chips]');
   var form = root.querySelector('[data-cc-form]');
   var input = root.querySelector('[data-cc-input]');
   var sendBtn = root.querySelector('[data-cc-send]');
-  var usageEl = root.querySelector('[data-cc-usage]');
   var statusEl = root.querySelector('[data-cc-status]');
-  var mount = document.getElementById('counsellor-page');
+  var head = root.querySelector('.cc__head');
+  var quotaBtn = root.querySelector('[data-cc-quota]');
+  var quotaPanel = root.querySelector('[data-cc-qp]');
+  var leftEl = root.querySelector('[data-cc-left]');
+  var ringEl = root.querySelector('.cc__ring-v');
+  var limitEl = root.querySelector('[data-cc-limit]');
+  var histBtn = root.querySelector('[data-cc-hist]');
+  var histPanel = root.querySelector('[data-cc-histp]');
+  var histList = root.querySelector('[data-cc-hist-list]');
+  var delAllBtn = root.querySelector('[data-cc-delall]');
+  /* a phone: the chat is the whole screen, and the keyboard takes half of it */
+  var phone = window.matchMedia('(max-width: 60rem)');
+  var docEl = document.documentElement;
+  var PLACEHOLDER = input.placeholder;
 
-  /* On /counsellor the chat lives in the page, and the round button goes. */
-  if (mount) {
-    mount.appendChild(root);
-    root.setAttribute('data-mode', 'page');
-    root.setAttribute('role', 'region');
-    root.hidden = false;
-    if (dock) dock.hidden = true;
+  /* ── the keyboard ──
+     Chrome on Android shrinks the page when the keyboard opens (the
+     viewport meta asks it to). Safari on iOS does not: it lays the keyboard
+     over the page. So the chat's height follows the visible part of the
+     screen, and the page is kept scrolled to the chat while typing, so the
+     message box is never behind the keyboard. */
+  var vv = window.visualViewport;
+  function fit() {
+    if (!vv) return;
+    docEl.style.setProperty('--vvh', Math.round(vv.height) + 'px');
+    /* a shorter window shows the newest messages, not the oldest */
+    requestAnimationFrame(scroll);
+    if (phone.matches && document.activeElement === input) {
+      var top = root.getBoundingClientRect().top + window.scrollY - (document.querySelector('.head') || { offsetHeight: 0 }).offsetHeight;
+      window.scrollTo(0, Math.max(0, top));
+    }
   }
+  if (vv) { vv.addEventListener('resize', fit); fit(); }
+  input.addEventListener('focus', function () { setTimeout(fit, 320); });
 
   /* ── storage, all of it wrapped: a private window can refuse it ── */
   function get(store, k, d) { try { var v = window[store].getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
   function put(store, k, v) { try { window[store].setItem(k, JSON.stringify(v)); } catch (e) {} }
 
-  var CHAT_KEY = 'abwh-chat';
-  var msgs = get('sessionStorage', CHAT_KEY, []); // [{r:'user'|'model', t:'...'}]
+  /* ── conversations, kept on this device ──
+     Every conversation is saved in this browser (localStorage) until the
+     reader deletes it in History. Nothing is sent anywhere to be kept: the
+     AI service sees the current conversation only to write the next reply.
+     [{ id, t: started, u: last message, msgs: [{ r: 'user'|'model', t }] }] */
+  var CHATS = 'abwh-chats', CUR = 'abwh-current', MAX_CHATS = 50;
+  var chats = get('localStorage', CHATS, []);
+  if (!Array.isArray(chats)) chats = [];
+  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+  function find(id) { for (var i = 0; i < chats.length; i++) if (chats[i].id === id) return chats[i]; return null; }
+  /* a conversation from before history existed (kept only for the tab) moves in */
+  var older = get('sessionStorage', 'abwh-chat', null);
+  if (older && older.length) {
+    chats.unshift({ id: uid(), t: Date.now(), u: Date.now(), msgs: older });
+    put('localStorage', CUR, chats[0].id);
+    try { sessionStorage.removeItem('abwh-chat'); } catch (e) {}
+  }
+  var cur = find(get('localStorage', CUR, null));
+  var msgs = cur ? cur.msgs : [];
   var busy = false;
+  function save() {
+    chats = chats.slice(0, MAX_CHATS);
+    put('localStorage', CHATS, chats);
+    put('localStorage', CUR, cur ? cur.id : null);
+  }
+  /* writes the open conversation and moves it to the top of History; a new
+     conversation is only created once something has been said in it */
+  function commit() {
+    if (!cur) { cur = { id: uid(), t: Date.now(), u: Date.now(), msgs: msgs }; }
+    cur.msgs = msgs; cur.u = Date.now();
+    chats = [cur].concat(chats.filter(function (c) { return c !== cur; }));
+    save();
+  }
 
-  /* ── the honest counter ── */
-  function today() { var d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
-  function usage() {
-    var u = get('localStorage', 'abwh-usage', null);
-    if (!u || u.day !== today()) u = { day: today(), n: 0, line: u ? u.line : 0 };
-    return u;
+  /* ── messages left: 20 for each person, every 24 hours ──
+     The 24 hours start with the first message that gets a reply, and all 20
+     come back together when they are up. Only replies that arrive are
+     counted: a message the service could not answer costs nothing. */
+  var LIMIT = 20, WINDOW = 24 * 3600e3;
+  function quota() {
+    var q = get('localStorage', 'abwh-quota', null);
+    if (!q || !q.start || Date.now() >= q.start + WINDOW) q = { start: 0, n: 0 };
+    return q;
   }
-  function showUsage(note) {
-    var u = usage();
-    usageEl.textContent = 'Messages today: ' + u.n + ' · Line ' + (u.line + 1) + ' of ' + LINES.length + (note ? ' · ' + note : '');
-    usageEl.title = 'How many messages you have sent from this device today, and which of the ' + LINES.length + ' shared lines is answering. When one line reaches its real daily limit, the chat moves to the next.';
+  function left() { return Math.max(0, LIMIT - quota().n); }
+  function resetAt() { var q = quota(); return q.start ? q.start + WINDOW : 0; }
+  function spend() { var q = quota(); if (!q.start) q.start = Date.now(); q.n++; put('localStorage', 'abwh-quota', q); }
+  function clock(ms) {
+    var s = Math.max(0, Math.ceil(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+    s = s % 60;
+    return h + ':' + (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
   }
-  function countSent(line) { var u = usage(); u.n++; u.line = line; put('localStorage', 'abwh-usage', u); }
-  function setLine(line) { var u = usage(); u.line = line; put('localStorage', 'abwh-usage', u); }
+  var WARN = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7.5V12l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+  function showQuota() {
+    var n = left(), at = resetAt();
+    leftEl.textContent = n;
+    ringEl.setAttribute('stroke-dasharray', (n / LIMIT * 100).toFixed(1) + ' 100');
+    quotaBtn.setAttribute('aria-label', n + ' of ' + LIMIT + ' messages left. Show details');
+    root.classList.toggle('is-low', n <= 3);
+    if (!quotaPanel.hidden) {
+      quotaPanel.innerHTML =
+        '<p class="cc__qp-big"><b>' + n + '</b> of ' + LIMIT + ' messages left</p>' +
+        '<span class="cc__qp-bar"><i style="width:' + (n / LIMIT * 100) + '%"></i></span>' +
+        '<p class="cc__qp-note">' + (at
+          ? (n ? 'Everyone gets ' + LIMIT + ' messages. Yours all come back in <b>' + clock(at - Date.now()) + '</b>, 24 hours after your first one.'
+               : 'You have used all ' + LIMIT + '. They all come back in <b>' + clock(at - Date.now()) + '</b>.')
+          : 'Everyone gets ' + LIMIT + ' messages every 24 hours. The 24 hours start with your first message.') + '</p>';
+    }
+    var locked = n === 0;
+    root.classList.toggle('is-locked', locked);
+    input.disabled = locked;
+    input.placeholder = locked ? 'Your messages come back in ' + clock(at - Date.now()) : PLACEHOLDER;
+    if (locked) {
+      var html = WARN + '<p>You have used all ' + LIMIT + ' of your messages. They refresh in <b>' + clock(at - Date.now()) + '</b>. ' +
+        'If you need someone now, call <a href="tel:14446">14446</a>, free, any hour.</p>';
+      if (limitEl.hidden) { limitEl.hidden = false; limitEl.innerHTML = html; }
+      else limitEl.innerHTML = html;
+    } else if (!limitEl.hidden) { limitEl.hidden = true; }
+    syncSend();
+  }
+  /* the clock keeps ticking while anything shows it */
+  setInterval(function () { if (!quotaPanel.hidden || root.classList.contains('is-locked')) showQuota(); }, 1000);
+  function nudgeLimit() {
+    limitEl.classList.remove('is-shake'); void limitEl.offsetWidth; limitEl.classList.add('is-shake');
+  }
+
+  function toggleQuota(open) {
+    open = open == null ? quotaPanel.hidden : open;
+    if (open) { quotaPanel.style.top = (head.offsetHeight + 6) + 'px'; quotaPanel.hidden = false; showQuota(); }
+    else quotaPanel.hidden = true;
+    quotaBtn.setAttribute('aria-expanded', String(open));
+  }
+  quotaBtn.addEventListener('click', function (e) { e.stopPropagation(); toggleQuota(); });
+  document.addEventListener('click', function (e) { if (!quotaPanel.hidden && !quotaPanel.contains(e.target)) toggleQuota(false); });
 
   /* ── which line and model are resting, and until when ── */
+  function lineNow() { return get('localStorage', 'abwh-line', 0) || 0; }
+  function setLine(line) { put('localStorage', 'abwh-line', line); }
   function blocks() {
     var b = get('localStorage', 'abwh-lines', {}), now = Date.now(), out = {};
     for (var k in b) if (b[k] > now) out[k] = b[k];
@@ -261,7 +360,7 @@
   function notice() {
     var n = document.createElement('p');
     n.className = 'cc-notice';
-    n.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>Private chat. Leave out your name, address and number.';
+    n.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>Saved only on this device. Leave out your name, address and number.';
     log.appendChild(n);
   }
   function scroll() { log.scrollTop = log.scrollHeight; }
@@ -279,9 +378,87 @@
     notice();
     bubble('model', GREETING);
     msgs.forEach(function (m) { bubble(m.r, m.t); });
-    chips(msgs.length ? [] : STARTERS);
+    chips(msgs.length || !left() ? [] : STARTERS);
+    log.style.scrollBehavior = 'auto'; scroll(); log.style.scrollBehavior = '';
   }
   function status(t) { statusEl.textContent = t; }
+
+  /* ── History: open a conversation, start a new one, or delete ── */
+  function titleOf(c) {
+    for (var i = 0; i < c.msgs.length; i++) if (c.msgs[i].r === 'user') return c.msgs[i].t.replace(/\s+/g, ' ').slice(0, 80);
+    return 'A conversation';
+  }
+  function when(ts) {
+    var d = new Date(ts), now = new Date();
+    var time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    if (d.toDateString() === now.toDateString()) return 'Today, ' + time;
+    var y = new Date(now); y.setDate(now.getDate() - 1);
+    if (d.toDateString() === y.toDateString()) return 'Yesterday, ' + time;
+    return d.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ', ' + time;
+  }
+  var TRASH = '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M4.5 7h15M9.5 7V4.8h5V7M6.5 7l.9 12.2h9.2L17.5 7M10 10.5v5.5M14 10.5v5.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  function renderHist() {
+    histList.innerHTML = '';
+    delAllBtn.hidden = !chats.length;
+    if (!chats.length) {
+      histList.innerHTML = '<li class="cc__hist-empty">No conversations yet. Whatever you talk about here is kept on this device until you delete it.</li>';
+      return;
+    }
+    chats.forEach(function (c) {
+      var li = document.createElement('li');
+      li.className = 'cc-h' + (c === cur ? ' is-cur' : '');
+      var n = c.msgs.filter(function (m) { return m.r === 'user'; }).length;
+      var open = document.createElement('button');
+      open.type = 'button'; open.className = 'cc-h__open';
+      open.innerHTML = '<span class="cc-h__t"></span><span class="cc-h__m"></span>';
+      open.firstChild.textContent = titleOf(c);
+      open.lastChild.textContent = (c === cur ? 'Open now · ' : '') + when(c.u) + ' · ' + n + (n === 1 ? ' message' : ' messages');
+      open.addEventListener('click', function () { if (busy) return; cur = c; msgs = c.msgs; save(); renderAll(); toggleHist(false); });
+      var del = document.createElement('button');
+      del.type = 'button'; del.className = 'cc-h__del'; del.innerHTML = TRASH;
+      del.setAttribute('aria-label', 'Delete the conversation “' + titleOf(c).slice(0, 40) + '”');
+      del.addEventListener('click', function () {
+        if (busy) return;
+        chats = chats.filter(function (x) { return x !== c; });
+        if (c === cur) { cur = null; msgs = []; renderAll(); }
+        save(); renderHist();
+      });
+      li.appendChild(open); li.appendChild(del);
+      histList.appendChild(li);
+    });
+  }
+  function toggleHist(open) {
+    open = open == null ? histPanel.hidden : open;
+    if (open) { toggleQuota(false); renderHist(); histPanel.hidden = false; histPanel.querySelector('[data-cc-hist-x]').focus({ preventScroll: true }); }
+    else if (!histPanel.hidden) { histPanel.hidden = true; histBtn.focus({ preventScroll: true }); }
+    histBtn.setAttribute('aria-expanded', String(open));
+    delAllBtn.classList.remove('is-sure'); delAllBtn.textContent = 'Delete all conversations';
+  }
+  histBtn.addEventListener('click', function () { toggleHist(); });
+  histPanel.querySelector('[data-cc-hist-x]').addEventListener('click', function () { toggleHist(false); });
+  root.querySelector('[data-cc-new]').addEventListener('click', function () {
+    if (busy) return;
+    cur = null; msgs = []; save(); renderAll(); toggleHist(false);
+    if (!phone.matches && !input.disabled) input.focus();
+  });
+  /* deleting everything asks twice */
+  var sureTimer = 0;
+  delAllBtn.addEventListener('click', function () {
+    if (busy) return;
+    if (!delAllBtn.classList.contains('is-sure')) {
+      delAllBtn.classList.add('is-sure'); delAllBtn.textContent = 'Tap again to delete every conversation';
+      clearTimeout(sureTimer);
+      sureTimer = setTimeout(function () { delAllBtn.classList.remove('is-sure'); delAllBtn.textContent = 'Delete all conversations'; }, 4000);
+      return;
+    }
+    chats = []; cur = null; msgs = []; save(); renderAll(); renderHist();
+    delAllBtn.classList.remove('is-sure'); delAllBtn.textContent = 'Delete all conversations';
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (!histPanel.hidden) toggleHist(false);
+    if (!quotaPanel.hidden) toggleQuota(false);
+  });
 
   /* A message that sounds like an emergency gets the numbers at once, from
      the page itself, before and whether or not a reply comes back. */
@@ -293,12 +470,12 @@
     return msgs.slice(-24).map(function (m) { return { role: m.r, parts: [{ text: m.t }] }; });
   }
   function brief() {
-    return BRIEF + '\n\n# CONTEXT\nThe person is currently looking at the page: "' + document.title + '".';
+    return BRIEF + '\n\n# CONTEXT\nThe person is currently looking at the page: "' + document.title + '". They have ' + (left() - 1) + ' of their ' + LIMIT + ' messages left after this one.';
   }
   function plan() {
     /* every line, starting with the one that answered last; every model on
        a line before moving to the next line */
-    var b = blocks(), start = usage().line % LINES.length, out = [];
+    var b = blocks(), start = lineNow() % LINES.length, out = [];
     for (var i = 0; i < LINES.length; i++) {
       var li = (start + i) % LINES.length;
       if (b['line' + li]) continue;
@@ -361,7 +538,7 @@
   }
 
   function reply() {
-    var queue = plan(), typing = bubble('model', ''), got = false;
+    var queue = plan(), typing = bubble('model', ''), got = false, crowded = false;
     typing.innerHTML = '<span class="cc-typing" aria-label="The counsellor is typing"><i></i><i></i><i></i></span>';
     status('Typing…');
     function next() {
@@ -374,6 +551,7 @@
         var s = f.status;
         if (s === 429) {
           /* this line's real limit for this model is reached */
+          crowded = true;
           block('line' + c.line + '|' + c.model.id, untilFrom(f.err));
         } else if (s === 400 && /api key|API_KEY/i.test((f.err && f.err.message) || '') || s === 401 || s === 403) {
           block('line' + c.line, Date.now() + 3600e3);
@@ -381,27 +559,30 @@
           block('model|' + c.model.id, Date.now() + 6 * 3600e3);
         } else {
           /* overloaded, timed out or offline: rest the model briefly */
+          if (s === 503) crowded = true;
           block('model|' + c.model.id, Date.now() + 20e3);
         }
         return next();
       });
     }
     return next().then(function (r) {
-      var before = usage().line;
       setLine(r.line);
       msgs.push({ r: 'model', t: r.text });
-      put('sessionStorage', CHAT_KEY, msgs);
+      commit();
+      spend();
       typing.innerHTML = md(r.text);
-      showUsage(r.line !== before ? 'switched line' : '');
+      showQuota();
+      if (!left()) nudgeLimit();
       scroll();
     }, function () {
       unbubble(typing);
+      /* Everything resting with nothing about to come back means the shared
+         lines are used up for now: too many people at once, not this reader. */
       var b = blocks(), soonest = Infinity;
       for (var k in b) soonest = Math.min(soonest, b[k]);
-      var allQuota = !plan().length && soonest > Date.now() + 60e3;
-      var when = isFinite(soonest) ? new Date(soonest).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
-      bubble('err', allQuota
-        ? 'I can’t reply right now: everyone using this chat today has used up its free capacity on both lines. It comes back around **' + when + '**. Please don’t wait for me — call **14446** (free, any hour, press 1), or **14416** to talk to someone now.'
+      var full = crowded || (!plan().length && soonest > Date.now() + 60e3);
+      bubble('err', full
+        ? 'The counsellor can’t be used right now because a lot of people are using it at the same time. Your messages are not affected — please try again a little later. If you need someone now, call **14446** (free, any hour, press 1) or **14416**.'
         : 'I couldn’t get a reply through just now. Check your internet and try sending again. If you need someone right away, call **14446** (free, any hour, press 1).');
       /* the unanswered message stays, so sending again just retries */
     });
@@ -410,68 +591,46 @@
   function send(text) {
     text = (text || '').trim();
     if (!text || busy) return;
+    if (!left()) { showQuota(); nudgeLimit(); return; }
     busy = true; root.classList.add('is-busy'); sendBtn.disabled = true;
     chips([]);
     msgs.push({ r: 'user', t: text.slice(0, 1500) });
-    put('sessionStorage', CHAT_KEY, msgs);
+    commit();
     bubble('user', text);
-    countSent(usage().line);
-    showUsage();
     if (DANGER.test(text)) bubble('model', DANGER_CARD);
     reply().then(done, done);
     function done() {
       busy = false; root.classList.remove('is-busy'); syncSend();
       status('Online · private chat');
-      if (!mount || root.contains(document.activeElement)) input.focus({ preventScroll: true });
+      /* back to the box, unless that would throw a phone's keyboard up unasked */
+      if (root.contains(document.activeElement) && document.activeElement !== input && !phone.matches && !input.disabled) input.focus({ preventScroll: true });
     }
   }
 
   /* ── wiring ── */
-  form.addEventListener('submit', function (e) { e.preventDefault(); var t = input.value; input.value = ''; grow(); send(t); });
+  form.addEventListener('submit', function (e) { e.preventDefault(); var t = input.value; if (!left()) { send(t); return; } input.value = ''; grow(); send(t); });
   input.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit ? form.requestSubmit() : form.dispatchEvent(new Event('submit')); }
   });
   function grow() { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 128) + 'px'; syncSend(); }
-  function syncSend() { sendBtn.disabled = busy || !input.value.trim(); }
+  function syncSend() { sendBtn.disabled = busy || !left() || !input.value.trim(); }
   input.addEventListener('input', grow);
 
-  root.querySelector('[data-cc-new]').addEventListener('click', function () {
-    if (busy) return;
-    msgs = []; put('sessionStorage', CHAT_KEY, msgs); renderAll(); input.focus();
-  });
+  /* Tapping send must not take the cursor out of the box, or a phone drops
+     its keyboard after every message. */
+  sendBtn.addEventListener('mousedown', function (e) { e.preventDefault(); });
+  /* On a computer the box takes the cursor straight away; on a phone the
+     keyboard waits until the reader taps the box. */
+  if (!phone.matches) setTimeout(function () { if (!input.disabled) input.focus({ preventScroll: true }); }, 400);
 
-  /* A small hint beside the button, once per visit, after a few seconds. */
-  function hideHint(forGood) {
-    if (hint) hint.hidden = true;
-    if (forGood) put('sessionStorage', 'abwh-hint', 1);
-  }
-  if (hint && !mount && !get('sessionStorage', 'abwh-hint', 0)) {
-    setTimeout(function () { if (root.hidden && !get('sessionStorage', 'abwh-hint', 0)) hint.hidden = false; }, 6000);
-    hint.querySelector('[data-cc-hint-x]').addEventListener('click', function () { hideHint(true); });
-    hint.querySelector('[data-cc-hint-open]').addEventListener('click', function () { hideHint(true); open(); });
-  }
-
-  function open() {
-    hideHint(true);
-    root.hidden = false;
-    if (fab) fab.setAttribute('aria-expanded', 'true');
-    scroll();
-    setTimeout(function () { input.focus({ preventScroll: true }); }, 60);
-  }
-  function close() {
-    if (mount) return;
-    root.hidden = true;
-    if (fab) { fab.setAttribute('aria-expanded', 'false'); fab.focus({ preventScroll: true }); }
-  }
-  if (fab) fab.addEventListener('click', function () { root.hidden ? open() : close(); });
-  root.querySelector('[data-cc-close]').addEventListener('click', close);
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !root.hidden && !mount) close(); });
-  /* any "talk to the counsellor" button on a page can open it in place */
-  document.querySelectorAll('[data-cc-open]:not(.cc-fab)').forEach(function (b) {
-    b.addEventListener('click', function (e) { e.preventDefault(); if (mount) input.focus(); else open(); });
+  /* another tab may have changed the history or used messages */
+  window.addEventListener('storage', function (e) {
+    if (busy || !e.key || e.key.indexOf('abwh-') !== 0) return;
+    if (e.key === CHATS) { chats = get('localStorage', CHATS, []); cur = cur && find(cur.id); msgs = cur ? cur.msgs : []; renderAll(); if (!histPanel.hidden) renderHist(); }
+    if (e.key === 'abwh-quota') showQuota();
   });
 
   renderAll();
-  showUsage();
+  showQuota();
   syncSend();
 })();
