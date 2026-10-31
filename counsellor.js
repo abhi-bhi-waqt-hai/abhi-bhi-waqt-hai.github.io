@@ -135,6 +135,8 @@
 
   /* ── elements ── */
   var fab = document.querySelector('.cc-fab');
+  var dock = document.querySelector('.cc-dock');
+  var hint = document.querySelector('[data-cc-hint]');
   var log = root.querySelector('[data-cc-log]');
   var chipsEl = root.querySelector('[data-cc-chips]');
   var form = root.querySelector('[data-cc-form]');
@@ -150,7 +152,7 @@
     root.setAttribute('data-mode', 'page');
     root.setAttribute('role', 'region');
     root.hidden = false;
-    if (fab) fab.hidden = true;
+    if (dock) dock.hidden = true;
   }
 
   /* ── storage, all of it wrapped: a private window can refuse it ── */
@@ -238,13 +240,29 @@
     flushPara(); flushList();
     return html;
   }
+  var HEART = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M12 21s-7.5-4.6-9.3-9.4C1.4 8 3.6 4.5 7.2 4.5c2 0 3.4 1.1 4.8 2.8 1.4-1.7 2.8-2.8 4.8-2.8 3.6 0 5.8 3.5 4.5 7.1C19.5 16.4 12 21 12 21z" fill="currentColor"/></svg>';
+  /* The counsellor's messages sit in a row with a small avatar; the
+     reader's and the error notes stand alone. Returns the bubble. */
   function bubble(role, text, extra) {
     var el = document.createElement('div');
     el.className = 'cc-msg cc-msg--' + (role === 'user' ? 'me' : role === 'err' ? 'err' : 'bot') + (extra ? ' ' + extra : '');
     if (role === 'user') el.textContent = text; else el.innerHTML = md(text);
-    log.appendChild(el);
+    if (role === 'model') {
+      var row = document.createElement('div');
+      row.className = 'cc-row cc-row--bot';
+      row.innerHTML = '<span class="cc-mini" aria-hidden="true">' + HEART + '</span>';
+      row.appendChild(el);
+      log.appendChild(row);
+    } else log.appendChild(el);
     scroll();
     return el;
+  }
+  function unbubble(el) { var row = el.parentNode; (row && row.classList.contains('cc-row') ? row : el).remove(); }
+  function notice() {
+    var n = document.createElement('p');
+    n.className = 'cc-notice';
+    n.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>Private chat. Leave out your name, address and number.';
+    log.appendChild(n);
   }
   function scroll() { log.scrollTop = log.scrollHeight; }
   function chips(list) {
@@ -258,6 +276,7 @@
   }
   function renderAll() {
     log.innerHTML = '';
+    notice();
     bubble('model', GREETING);
     msgs.forEach(function (m) { bubble(m.r, m.t); });
     chips(msgs.length ? [] : STARTERS);
@@ -376,7 +395,7 @@
       showUsage(r.line !== before ? 'switched line' : '');
       scroll();
     }, function () {
-      typing.remove();
+      unbubble(typing);
       var b = blocks(), soonest = Infinity;
       for (var k in b) soonest = Math.min(soonest, b[k]);
       var allQuota = !plan().length && soonest > Date.now() + 60e3;
@@ -401,8 +420,8 @@
     if (DANGER.test(text)) bubble('model', DANGER_CARD);
     reply().then(done, done);
     function done() {
-      busy = false; root.classList.remove('is-busy'); sendBtn.disabled = false;
-      status('Here for you · any hour');
+      busy = false; root.classList.remove('is-busy'); syncSend();
+      status('Online · private chat');
       if (!mount || root.contains(document.activeElement)) input.focus({ preventScroll: true });
     }
   }
@@ -412,7 +431,8 @@
   input.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit ? form.requestSubmit() : form.dispatchEvent(new Event('submit')); }
   });
-  function grow() { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 128) + 'px'; }
+  function grow() { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 128) + 'px'; syncSend(); }
+  function syncSend() { sendBtn.disabled = busy || !input.value.trim(); }
   input.addEventListener('input', grow);
 
   root.querySelector('[data-cc-new]').addEventListener('click', function () {
@@ -420,7 +440,19 @@
     msgs = []; put('sessionStorage', CHAT_KEY, msgs); renderAll(); input.focus();
   });
 
+  /* A small hint beside the button, once per visit, after a few seconds. */
+  function hideHint(forGood) {
+    if (hint) hint.hidden = true;
+    if (forGood) put('sessionStorage', 'abwh-hint', 1);
+  }
+  if (hint && !mount && !get('sessionStorage', 'abwh-hint', 0)) {
+    setTimeout(function () { if (root.hidden && !get('sessionStorage', 'abwh-hint', 0)) hint.hidden = false; }, 6000);
+    hint.querySelector('[data-cc-hint-x]').addEventListener('click', function () { hideHint(true); });
+    hint.querySelector('[data-cc-hint-open]').addEventListener('click', function () { hideHint(true); open(); });
+  }
+
   function open() {
+    hideHint(true);
     root.hidden = false;
     if (fab) fab.setAttribute('aria-expanded', 'true');
     scroll();
@@ -441,4 +473,5 @@
 
   renderAll();
   showUsage();
+  syncSend();
 })();
