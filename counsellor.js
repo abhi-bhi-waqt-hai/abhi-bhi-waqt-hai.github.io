@@ -165,7 +165,7 @@
 
   /* ── the keyboard ──
      Chrome on Android shrinks the page when the keyboard opens (the
-     viewport meta asks it to). Safari on iOS does not: it lays the keyboard
+     viewport meta asks it to). Some other browsers do not: it lays the keyboard
      over the page. So the chat's height follows the visible part of the
      screen, and the page is kept scrolled to the chat while typing, so the
      message box is never behind the keyboard. */

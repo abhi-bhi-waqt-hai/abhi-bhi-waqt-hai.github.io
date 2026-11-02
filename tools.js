@@ -51,10 +51,17 @@
       'Do you need more than before to feel the same effect?',
       'When it wears off, do you feel sick, shaky, sweaty, restless or very low?',
     ];
+    /* the extra questions the AI read-out uses */
+    var AMOUNT = ['1 or 2', '3 to 5', '6 to 10', 'More than 10'];
+    var AMOUNT_N = [2, 4, 8, 12];
+    var UNIT = { alcohol: 'drinks', tobacco: 'cigarettes', cannabis: 'joints', pills: 'pills or doses', inhalants: 'times', opioids: 'doses', stimulants: 'times' };
+    var WANT = ['Cut down slowly', 'Stop completely', 'Just understand where I am', 'I’m not sure yet'];
+    var MOOD = ['Very low', 'Low', 'Okay', 'Good', 'Great'];
     var SAFETY = 'In the past month, have you had thoughts of hurting yourself, or has using left you or someone with you unconscious or struggling to breathe?';
     var st;
-    function reset() { st = { step: 'intro', used: [], often: -1, yes: [], safety: null, i: 0, dir: 1 }; render(); }
-    var total = SIGNS.length + 3; // what, how often, the signs, safety
+    function reset() { st = { step: 'intro', used: [], often: -1, amount: -1, want: -1, mood: -1, note: '', yes: [], safety: null, i: 0, dir: 1 }; render(); }
+    var total = SIGNS.length + 7; // what, how often, how much, the signs, want, mood, a note, safety
+    function unit() { return UNIT[st.used[0]] || 'times'; }
     function progress(n) { return '<div class="q-bar" aria-hidden="true"><i style="width:' + Math.round(n / total * 100) + '%"></i></div>'; }
     function screen(html) {
       quiz.innerHTML = '<div class="q-screen' + (st.dir < 0 ? ' is-back' : '') + '">' + html + '</div>';
@@ -75,9 +82,22 @@
         screen(progress(2) + '<p class="q-k">Question 2 of ' + total + '</p><h3 class="q-h">In the past 3 months, how often did you use the one you use most?</h3>' +
           '<div class="q-list">' + OFTEN.map(function (o, i) { return '<button type="button" class="q-opt" data-o="' + i + '"' + (i ? '' : ' data-focus') + '>' + o + '</button>'; }).join('') +
           '<button type="button" class="q-opt" data-o="-2">Not in the past 3 months</button></div>' + back());
+      } else if (st.step === 'amount') {
+        screen(progress(3) + '<p class="q-k">Question 3 of ' + total + '</p><h3 class="q-h">On a day you use, how much, roughly?</h3><p class="q-p">Counted in ' + unit() + '.</p>' +
+          '<div class="q-list">' + AMOUNT.map(function (o, i) { return '<button type="button" class="q-opt" data-am="' + i + '"' + (i ? '' : ' data-focus') + '>' + o + ' ' + unit() + '</button>'; }).join('') + '</div>' + back());
+      } else if (st.step === 'want') {
+        screen(progress(SIGNS.length + 4) + '<p class="q-k">Question ' + (SIGNS.length + 4) + ' of ' + total + '</p><h3 class="q-h">What do you want right now?</h3><p class="q-p">Any answer is fine. You don’t have to stop all at once.</p>' +
+          '<div class="q-list">' + WANT.map(function (o, i) { return '<button type="button" class="q-opt" data-w="' + i + '"' + (i ? '' : ' data-focus') + '>' + o + '</button>'; }).join('') + '</div>' + back());
+      } else if (st.step === 'mood') {
+        screen(progress(SIGNS.length + 5) + '<p class="q-k">Question ' + (SIGNS.length + 5) + ' of ' + total + '</p><h3 class="q-h">How have you been feeling, most days this month?</h3>' +
+          '<div class="q-list q-list--mood">' + MOOD.map(function (o, i) { return '<button type="button" class="q-opt" data-md="' + i + '"' + (i ? '' : ' data-focus') + '>' + o + '</button>'; }).join('') + '</div>' + back());
+      } else if (st.step === 'note') {
+        screen(progress(SIGNS.length + 6) + '<p class="q-k">Question ' + (SIGNS.length + 6) + ' of ' + total + ' · optional</p><h3 class="q-h">Anything else the AI should know?</h3><p class="q-p">When you use, why, what you have tried. Don’t write your name.</p>' +
+          '<textarea class="q-note" rows="3" maxlength="400" placeholder="Optional" data-note-in>' + esc(st.note) + '</textarea>' +
+          '<div class="q-row"><button class="q-ghost" type="button" data-q="skip">Skip</button><button class="q-go" type="button" data-q="noted" data-focus>Next ' + ARROW + '</button></div>' + back());
       } else if (st.step === 'sign') {
         var i = st.i;
-        screen(progress(3 + i) + '<p class="q-k">Question ' + (3 + i) + ' of ' + total + ' · the past year</p><h3 class="q-h q-h--big">' + SIGNS[i] + '</h3>' +
+        screen(progress(4 + i) + '<p class="q-k">Question ' + (4 + i) + ' of ' + total + ' · the past year</p><h3 class="q-h q-h--big">' + SIGNS[i] + '</h3>' +
           '<div class="q-yn"><button type="button" class="q-y" data-a="1" data-focus>Yes</button><button type="button" class="q-n" data-a="0">No</button></div>' + back());
       } else if (st.step === 'safety') {
         screen(progress(total) + '<p class="q-k">Last question</p><h3 class="q-h">' + SAFETY + '</h3>' +
@@ -113,8 +133,58 @@
         (band >= 2 ? '<a class="q-go" href="tel:14446">Call 14446, free ' + ARROW + '</a><a class="q-ghost" href="counsellor.html">Talk to the counsellor</a>'
                    : '<a class="q-go" href="counsellor.html">Talk to the counsellor ' + ARROW + '</a><a class="q-ghost" href="tel:14446">Call 14446</a>') +
         '<a class="q-ghost" href="#near">Help near me</a><a class="q-ghost" href="#timer">Cravings timer</a><a class="q-ghost" href="how-to-quit-drugs.html">How to quit</a></div>' +
+        '<div class="q-ai" data-ai><p class="q-ai__k"><span class="q-ai__spark" aria-hidden="true"></span>Your AI read-out</p><div class="q-ai__body" data-ai-body><span class="q-typing"><i></i><i></i><i></i></span></div></div>' +
         '<p class="q-fine">Based on the 11 signs doctors use to recognise a substance use problem (DSM-5). This is not a diagnosis; only a doctor can say that.</p>' +
         '<button class="q-again" type="button" data-q="again">Start again</button>');
+      readout(n, band);
+    }
+
+    /* ── the AI read-out: Gemini reads the answers, writes a short personal
+       note, and sets up the Reboot dashboard with commands
+       (reboot-store.js applies them) ── */
+    var AI_SYSTEM = [
+      'You read the answers to a private self-check on अभी भी वक़्त है ("There is still time"), an Indian website reviewed by two doctors that helps people with drugs, alcohol and tobacco. You are not a doctor and you never diagnose.',
+      'Write a warm, plain-English read-out of 3 very short paragraphs (under 100 words in all): 1) what their answers show, kindly and honestly, using their numbers; 2) the single most useful next step for them; 3) one safety point that fits what they use.',
+      'Safety rules: never advise stopping alcohol, sleeping pills, benzodiazepines or opioids all at once without a doctor; stopping those suddenly can be dangerous. After a break, tolerance drops and the old amount can cause an overdose. Mixing sedatives is the biggest danger. Free help: 14446 (drug helpline, any hour, no name), 14416 (Tele-MANAS, mental health), 112 (emergency). Section 64A of the NDPS Act protects a person who volunteers for treatment at a government-recognised centre.',
+      'Then set up their private Reboot dashboard (a daily cut-down log) with command lines that the page reads and hides, each on its own line:',
+      '[[SETUP substance | usual daily amount | unit]] substance is one of alcohol, cannabis, tobacco, pills, other; use the amount and unit they gave.',
+      '[[GOAL n]] a first gentle daily target, about 10 to 25 percent below their usual amount (never 0 for alcohol, pills or opioids used daily).',
+      '[[FOCUS text]] one focus for their first week, under 60 characters.',
+      '[[STEP text]] up to 3 small concrete steps, under 70 characters each.',
+      '[[TIP text]] one practical tip under 90 characters.',
+      '[[SOS]] only if they said yes to the safety question.',
+      'If they said they used none of these, skip SETUP and GOAL. Never mention the commands, this format, or the technology behind you.',
+    ].join('\n');
+    function readout(n, band) {
+      var body = quiz.querySelector('[data-ai-body]');
+      if (!body) return;
+      if (!window.abwhAI || !window.abwhReboot) { quiz.querySelector('[data-ai]').remove(); return; }
+      var names = st.used.map(function (k) { return USED.filter(function (u) { return u[0] === k; })[0][1]; });
+      var answers = {
+        uses: names, most_used: names[0], how_often_last_3_months: OFTEN[st.often] || 'not in the past 3 months',
+        amount_on_a_using_day: st.amount >= 0 ? AMOUNT[st.amount] + ' ' + unit() : 'not given', amount_number: st.amount >= 0 ? AMOUNT_N[st.amount] : null, unit: unit(),
+        signs_yes: SIGNS.filter(function (x, i) { return st.yes[i]; }), signs_count: n + ' of 11', band: ['few', 'mild', 'moderate', 'severe'][band],
+        wants: WANT[st.want] || 'not said', mood_this_month: MOOD[st.mood] || 'not said', note: st.note || '', safety_question: st.safety ? 'YES' : 'no',
+      };
+      var R = window.abwhReboot, AI = window.abwhAI;
+      AI.ask({ system: AI_SYSTEM, prompt: 'My answers: ' + JSON.stringify(answers), temperature: .6, maxTokens: 800,
+        onText: function (t) { body.innerHTML = AI.md(AI.commands(t.replace(/\[\[[^\]]*$/, '')).text); } })
+        .then(function (reply) {
+          var r = AI.commands(reply), d = R.load();
+          body.innerHTML = AI.md(r.text);
+          var changed = R.apply(d, r.cmds);
+          if (changed.length && d.what) {
+            R.save(d);
+            var a = document.createElement('a');
+            a.className = 'q-go q-ai__go'; a.href = 'reboot.html';
+            a.innerHTML = 'Open my Reboot dashboard ' + ARROW;
+            var p = document.createElement('p'); p.className = 'q-ai__set';
+            p.textContent = 'Your daily log is set up: ' + (d.goal ? 'a first target of ' + d.goal + ' ' + d.unit + ' a day' : 'ready when you are') + (d.focus ? ', and a focus for this week.' : '.');
+            body.appendChild(p); body.appendChild(a);
+          }
+        }, function (e) {
+          body.innerHTML = '<p>' + (e && e.offline ? 'The AI read-out needs the internet. Your result above works offline.' : 'The AI is busy right now. Your result above still stands; try again in a minute.') + '</p>';
+        });
     }
     quiz.addEventListener('click', function (e) {
       var b = e.target.closest('button');
@@ -128,8 +198,12 @@
       else if (q === 'back') {
         st.dir = -1;
         if (st.step === 'often') st.step = 'what';
-        else if (st.step === 'sign') { if (st.i) st.i--; else st.step = 'often'; }
-        else if (st.step === 'safety') { st.step = 'sign'; st.i = SIGNS.length - 1; }
+        else if (st.step === 'amount') st.step = 'often';
+        else if (st.step === 'sign') { if (st.i) st.i--; else st.step = st.often === -2 ? 'often' : 'amount'; }
+        else if (st.step === 'want') { st.step = 'sign'; st.i = SIGNS.length - 1; }
+        else if (st.step === 'mood') st.step = 'want';
+        else if (st.step === 'note') st.step = 'mood';
+        else if (st.step === 'safety') st.step = 'note';
       } else if (b.dataset.u) {
         var k = b.dataset.u, at = st.used.indexOf(k);
         if (at >= 0) st.used.splice(at, 1); else st.used.push(k);
@@ -137,10 +211,19 @@
         quiz.querySelector('[data-q="next"]').disabled = !st.used.length;
         return;
       } else if (b.dataset.o) {
-        st.often = +b.dataset.o; st.step = 'sign'; st.i = 0;
+        st.often = +b.dataset.o; st.i = 0; st.step = st.often === -2 ? 'sign' : 'amount';
+      } else if (b.dataset.am) {
+        st.amount = +b.dataset.am; st.step = 'sign'; st.i = 0;
+      } else if (b.dataset.w) {
+        st.want = +b.dataset.w; st.step = 'mood';
+      } else if (b.dataset.md) {
+        st.mood = +b.dataset.md; st.step = 'note';
+      } else if (q === 'skip' || q === 'noted') {
+        var ta = quiz.querySelector('[data-note-in]');
+        st.note = q === 'noted' && ta ? ta.value.trim().slice(0, 400) : ''; st.step = 'safety';
       } else if (b.dataset.a) {
         st.yes[st.i] = b.dataset.a === '1';
-        if (st.i < SIGNS.length - 1) st.i++; else st.step = 'safety';
+        if (st.i < SIGNS.length - 1) st.i++; else st.step = 'want';
       } else if (b.dataset.s) {
         st.safety = b.dataset.s === '1'; st.step = 'result';
       }
