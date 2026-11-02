@@ -4,12 +4,13 @@
    module, so it also runs when the built site is opened straight from a
    folder.
 
-   How replies are made: the conversation is sent to the AI service with the
-   brief below. Two access lines (keys) are shared by everybody who uses the
-   site. When one line's real usage limit is reached, the service says so
-   (HTTP 429) and the chat moves to the next line; a line comes back when the
-   service's own limit resets. Nothing here invents a limit: the counter only
-   shows what this device has actually sent, and which line is answering.
+   How replies are made: the conversation is sent, with the brief below, to
+   the site's own small server, which adds one of its access keys and passes
+   it to the AI service. The keys are shared by everybody who uses the site;
+   when one key's real usage limit is reached the server moves to the next,
+   and when every key is resting for a model the chat moves to the next
+   model. Nothing here invents a limit: the counter only shows what this
+   device has actually sent.
 
    The conversation lives in sessionStorage, so it follows the reader from
    page to page and is gone when the tab closes. Quick exit (site.ts) also
@@ -20,11 +21,15 @@
   var root = document.getElementById('cc');
   if (!root) return;
 
-  /* ── access lines, shared by everyone ── */
-  var LINES = [
-    'QVlIbWtscWNiU3VHQlk5T1FoOFlvcFJ1Tl9SdHVVMnlZS0pYanZRRVBMQko2TlI4YkEuUUE=',
-    'd2FZSGhMTWJUSFNsMUZQUlBSNDBicVBtZ095TDg2dkNrRFZ6a2hMeHZ0YUk2TlI4YkEuUUE=',
-  ].map(function (s) { return atob(s).split('').reverse().join(''); });
+  /* ── where replies come from ──
+     The site's own small server (worker/counsellor-proxy.js, on Cloudflare)
+     holds the access keys, so none are in this file. It tries its keys in
+     turn and moves to the next the moment one is used up; it says which key
+     answered (X-Line), and the next message starts there. */
+  var PROXY = 'https://abwh-counsellor.abhi-bhi-waqt-hai-site.workers.dev/';
+  /* one line, as far as this page can tell: the server shares its keys out */
+  var LINES = [0];
+  function hint() { return get('localStorage', 'abwh-hint', 0) || 0; }
 
   /* Fastest first. A model that is overloaded gets skipped for a short
      while; one whose quota is used up on a line is skipped until it resets. */
@@ -33,7 +38,6 @@
     { id: 'gemini-3.8-flash', cfg: { thinkingConfig: { thinkingLevel: 'low' } } },
     { id: 'gemini-3.1-flash-lite', cfg: {} },
   ];
-  var ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/';
 
   var GREETING =
     'Hi. I’m the counsellor on this site, and I’m really glad you’re here. You don’t need to give your name, and there’s no wrong reason to talk.\n\nSo, what brings you here today?';
@@ -59,7 +63,7 @@
     'Step 1 — understand why they are here. Their first message usually answers this. People here can be: someone using right now or regularly; someone under the influence at this moment; someone worried about a friend or family member; a student or curious visitor; a teacher, parent or judge looking at the site.',
     'Step 2 — only if they are the one using, gently learn, ONE question per message (never ask both in the same message), in this order: (a) how long they have been using; (b) what they are taking (and whether they mix things). Make each question feel safe, e.g. "Can I ask how long this has been going on? No judgement, it just helps me point you the right way." If they do not want to answer, say that is completely fine and carry on without it. Never interrogate, never ask for name, age is optional, never ask where they live beyond "which state or district" if it helps find a centre.',
     'Step 3 — be a friend. Tell them plainly not to be afraid: asking for help is not confessing a crime, they are not the first, and help in India is free. Explain what fits their situation from the knowledge below (withdrawal facts for what they take, Section 64A, what to ask). Then encourage them, warmly and without pressure, to reach out to the nearest help: call 14446 and press 1 for the counsellor (free, any hour, no name needed), or walk into an ODIC (walk-in centre, leave the same day). Offer to help them plan what to say on the call.',
-    'For a curious visitor, student or judge: skip the personal questions. Answer their questions clearly using the site knowledge, and you may explain what the site is and who made it.',
+    'For a curious visitor, student or judge: skip the personal questions. Answer their questions clearly using the site knowledge, and you may explain what the site is and who made it. Talk to a judge, teacher or parent in the same warm, plain way as anyone else: no titles like "Your Honour", no flattery.',
     'For someone worried about another person: ask what is going on with that person, give advice for supporting them (stay calm, listen, no shaming or threats, don’t search or trap them), share 14446, and the danger signs below.',
     '',
     '# IF THEY MAY BE HIGH, DRUNK OR IN CRISIS RIGHT NOW',
@@ -82,7 +86,8 @@
     '- Reply in the language the person uses (English, Hindi, Tamil, Hinglish, Tanglish are all fine).',
     '- Keep replies short: usually 2–5 sentences. Use a short list only when giving steps. You may use **bold** for a phone number or key point. No headings, no emojis except rarely a single gentle one.',
     '- End most replies with one gentle question or a clear next step.',
-    '- You can link to pages of this site with markdown links, using exactly these addresses: [Right now, tonight](right-now.html), [What happens if I ask](what-happens.html), [Where to go](where-to-go.html), [How to quit drugs](how-to-quit-drugs.html), [The campaigns](campaigns.html), [Sources](sources.html), [Credits](credits.html).',
+    '- You can link to pages of this site with markdown links, using exactly these addresses: [Right now, tonight](right-now.html), [What happens if I ask](what-happens.html), [Where to go](where-to-go.html), [How to quit drugs](how-to-quit-drugs.html), [Help tools](tools.html), [The campaigns](campaigns.html), [Sources](sources.html), [Credits](credits.html).',
+    '- The Help tools page has three private tools you can suggest when they fit: a self-check (a few honest questions about using, answered only on the device: [Self-check](tools.html#check)), a cravings timer that helps someone ride out an urge with slow breathing ([Cravings timer](tools.html#timer)), and Find help near me, which shows the nearest hospitals and de-addiction or mental-health places on a map-like view from their location ([Find help near me](tools.html#near)).',
     '',
     '# SITE KNOWLEDGE (everything on the website)',
     '## Phone numbers (all free)',
@@ -132,6 +137,8 @@
     '- Made by Badriprasath K.V, a Grade 8 (VIII-B) student at Amrita Vidyalayam, Erode, Tamil Nadu, as a solo project for STOGO Fest 2026-27 (theme "Reboot: The Rhythm of Life", Stream 02 Substance Safety, Track 01 Working Model). National round 25 November 2026, international round 14 January 2027.',
     '- No account, no cookies, no tracking. Chat messages are sent to an AI service only to write replies; conversations are saved only in this browser on this device, and the person can open or delete them any time under History (the clock button at the top of the chat). Nothing is kept on any server. Everyone gets 20 messages every 24 hours (the counter is the small ring at the top of the chat). The "Leave now" button (or pressing Escape twice) leaves the site instantly. A call to 14446 still shows in the phone’s call log.',
     '- Every fact on the site links to its source on the Sources page (NDPS Act on indiankanoon.org, PIB releases, WHO guidance).',
+    '- Two doctors, Dr. Kumar and Dr. Vanitha, helped gather the facts on the site, reviewed the whole website and approved it. They did not write your replies: you are an AI and can make mistakes.',
+    '- People can talk instead of typing (the microphone button in the chat), in English, Hindi or Tamil. Voice typing uses the browser’s own speech service.',
   ].join('\n');
 
   /* ── elements ── */
@@ -304,7 +311,7 @@
   /* ── rendering ── */
   function esc(s) { return s.replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   var NUMS = /\b(14446|14416|15100|1098|112|108|1800-11-0031)\b/g;
-  var SAFE_HREF = /^(right-now|what-happens|where-to-go|how-to-quit-drugs|campaigns|sources|credits|counsellor|index)\.html(#[\w-]+)?$|^tel:[\d-]+$|^https:\/\/[^\s"]+$/;
+  var SAFE_HREF = /^(right-now|what-happens|where-to-go|how-to-quit-drugs|tools|campaigns|sources|credits|counsellor|index)\.html(#[\w-]+)?$|^tel:[\d-]+$|^https:\/\/[^\s"]+$/;
   function inline(s) {
     /* links first, then bold and phone numbers in whatever is left */
     var out = '', last = 0, re = /\[([^\]]+)\]\(([^)\s]+)\)/g, m;
@@ -356,11 +363,12 @@
     scroll();
     return el;
   }
+  var TYPING = '<span class="cc-typing" aria-label="The counsellor is typing"><i></i><i></i><i></i></span>';
   function unbubble(el) { var row = el.parentNode; (row && row.classList.contains('cc-row') ? row : el).remove(); }
   function notice() {
     var n = document.createElement('p');
     n.className = 'cc-notice';
-    n.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>Saved only on this device. Leave out your name, address and number.';
+    n.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>Private, and saved only on this device. Leave out your name and number.';
     log.appendChild(n);
   }
   function scroll() { log.scrollTop = log.scrollHeight; }
@@ -369,17 +377,46 @@
     (list || []).forEach(function (c) {
       var b = document.createElement('button');
       b.type = 'button'; b.className = 'cc-chip'; b.textContent = c;
+      b.style.setProperty('--i', chipsEl.children.length);
       b.addEventListener('click', function () { send(c); });
       chipsEl.appendChild(b);
     });
   }
-  function renderAll() {
+  /* A new conversation: the counsellor types its hello. A conversation
+     coming back from History appears at once, without every bubble
+     animating in again. */
+  var greetT = 0, greetEl = null;
+  function shown(cb) {
+    if (!docEl.classList.contains('boot') || docEl.classList.contains('ready')) return cb();
+    new MutationObserver(function (_, mo) { if (docEl.classList.contains('ready')) { mo.disconnect(); setTimeout(cb, 350); } })
+      .observe(docEl, { attributes: true, attributeFilter: ['class'] });
+  }
+  function finishGreet() {
+    if (!greetEl) return;
+    clearTimeout(greetT);
+    greetEl.innerHTML = md(GREETING);
+    greetEl = null;
+    chips(msgs.length || !left() ? [] : STARTERS);
+    scroll();
+  }
+  function renderAll(fresh) {
+    clearTimeout(greetT); greetEl = null;
     log.innerHTML = '';
     notice();
+    if (fresh && !msgs.length) {
+      chips([]);
+      greetEl = bubble('model', '');
+      greetEl.innerHTML = TYPING;
+      /* typed once the page is showing, so the hello is seen being written */
+      shown(function () { if (greetEl) greetT = setTimeout(finishGreet, 1000); });
+      return;
+    }
+    log.classList.add('is-quiet');
     bubble('model', GREETING);
-    msgs.forEach(function (m) { bubble(m.r, m.t); });
+    msgs.forEach(function (m) { bubble(m.r, m.t); if (m.r === 'user') { var k = danger(m.t); if (k) crisis(k); } });
     chips(msgs.length || !left() ? [] : STARTERS);
     log.style.scrollBehavior = 'auto'; scroll(); log.style.scrollBehavior = '';
+    requestAnimationFrame(function () { requestAnimationFrame(function () { log.classList.remove('is-quiet'); }); });
   }
   function status(t) { statusEl.textContent = t; }
 
@@ -413,14 +450,14 @@
       open.innerHTML = '<span class="cc-h__t"></span><span class="cc-h__m"></span>';
       open.firstChild.textContent = titleOf(c);
       open.lastChild.textContent = (c === cur ? 'Open now · ' : '') + when(c.u) + ' · ' + n + (n === 1 ? ' message' : ' messages');
-      open.addEventListener('click', function () { if (busy) return; cur = c; msgs = c.msgs; save(); renderAll(); toggleHist(false); });
+      open.addEventListener('click', function () { if (busy) return; cur = c; msgs = c.msgs; save(); renderAll(false); toggleHist(false); });
       var del = document.createElement('button');
       del.type = 'button'; del.className = 'cc-h__del'; del.innerHTML = TRASH;
       del.setAttribute('aria-label', 'Delete the conversation “' + titleOf(c).slice(0, 40) + '”');
       del.addEventListener('click', function () {
         if (busy) return;
         chats = chats.filter(function (x) { return x !== c; });
-        if (c === cur) { cur = null; msgs = []; renderAll(); }
+        if (c === cur) { cur = null; msgs = []; renderAll(true); }
         save(); renderHist();
       });
       li.appendChild(open); li.appendChild(del);
@@ -438,7 +475,7 @@
   histPanel.querySelector('[data-cc-hist-x]').addEventListener('click', function () { toggleHist(false); });
   root.querySelector('[data-cc-new]').addEventListener('click', function () {
     if (busy) return;
-    cur = null; msgs = []; save(); renderAll(); toggleHist(false);
+    cur = null; msgs = []; save(); renderAll(true); toggleHist(false);
     if (!phone.matches && !input.disabled) input.focus();
   });
   /* deleting everything asks twice */
@@ -451,7 +488,7 @@
       sureTimer = setTimeout(function () { delAllBtn.classList.remove('is-sure'); delAllBtn.textContent = 'Delete all conversations'; }, 4000);
       return;
     }
-    chats = []; cur = null; msgs = []; save(); renderAll(); renderHist();
+    chats = []; cur = null; msgs = []; save(); renderAll(true); renderHist();
     delAllBtn.classList.remove('is-sure'); delAllBtn.textContent = 'Delete all conversations';
   });
   document.addEventListener('keydown', function (e) {
@@ -460,10 +497,39 @@
     if (!quotaPanel.hidden) toggleQuota(false);
   });
 
-  /* A message that sounds like an emergency gets the numbers at once, from
-     the page itself, before and whether or not a reply comes back. */
-  var DANGER = /(suicid|kill myself|end my life|want to die|don'?t want to live|overdos|not breathing|can'?t breathe|won'?t wake|not waking|unconscious|seizure|passed out|chest pain|मरना चाह|சாக வேண்டும்)/i;
-  var DANGER_CARD = '**If anyone is in danger right now, call 112** (any emergency) or **108** (ambulance). If you are thinking about ending your life, please call **Tele-MANAS on 14416**, free, any hour. I’m still here with you.';
+  /* A message that sounds like an emergency gets the numbers at once, as
+     big buttons from the page itself, before and whether or not a reply
+     comes back. Two kinds: someone thinking of ending their life, and
+     someone whose body is in danger now. English, Hinglish, Hindi, Tamil. */
+  var SELF = /(suicid|kill(ing)? myself|end (it all|my life)|want to die|wanna die|don['’]?t want to (live|be alive)|no reason to live|better off dead|hurt(ing)? myself|cut(ting)? myself|self[- ]?harm|marna chaht|mar jaana chaht|khudkushi|jeena nahi|आत्महत्या|मरना चाह|ख़ुदकुशी|खुदकुशी|जीना नहीं|தற்கொலை|சாக வேண்டும்|சாகணும்|சாகப் போறேன்|சாகப்போறேன்)/i;
+  var BODY = /(overdos|not breathing|stopped breathing|can['’]?t breathe|cannot breathe|won['’]?t wake|not waking|unconscious|unresponsive|seizure|having fits|passed out|collapsed|blue lips|chest pain|foaming|behosh|saans nahi|बेहोश|सांस नहीं|दौरा पड़|மயக்கம்|மூச்சு விட முடிய|மூச்சு இல்லை)/i;
+  /* the phone's emergency button: the numbers, as big buttons */
+  var helpBtn = root.querySelector('[data-cc-help]');
+  if (helpBtn) helpBtn.addEventListener('click', function () {
+    var lastEl = log.lastElementChild;
+    if (lastEl && lastEl.classList.contains('cc-sos')) { lastEl.classList.remove('is-again'); void lastEl.offsetWidth; lastEl.classList.add('is-again'); scroll(); return; }
+    crisis('body');
+  });
+  function danger(t) { return SELF.test(t) ? 'self' : BODY.test(t) ? 'body' : ''; }
+  var ALERT = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 21s-7.5-4.6-9.3-9.4C1.4 8 3.6 4.5 7.2 4.5c2 0 3.4 1.1 4.8 2.8 1.4-1.7 2.8-2.8 4.8-2.8 3.6 0 5.8 3.5 4.5 7.1C19.5 16.4 12 21 12 21z" fill="currentColor"/></svg>';
+  function crisis(kind) {
+    var self = kind === 'self';
+    var nums = self
+      ? [['14416', 'Tele-MANAS · talk now'], ['112', 'Emergency'], ['1098', 'Under 18']]
+      : [['112', 'Emergency'], ['108', 'Ambulance'], ['14416', 'Tele-MANAS']];
+    var card = document.createElement('div');
+    card.className = 'cc-sos';
+    card.setAttribute('role', 'alert');
+    card.innerHTML = '<p class="cc-sos__t">' + ALERT + (self ? 'You matter, and you don’t have to carry this alone.' : 'If someone may be in danger, call now.') + '</p>' +
+      '<div class="cc-sos__btns">' + nums.map(function (n, i) {
+        return '<a class="cc-sos__b' + (i ? '' : ' cc-sos__b--hot') + '" href="tel:' + n[0] + '"><b>' + n[0] + '</b><span>' + n[1] + '</span></a>';
+      }).join('') + '</div>' +
+      '<p class="cc-sos__s">' + (self
+        ? 'Free, any hour, in Tamil and Hindi too. If you can, tell one person near you right now. I’m still here, keep talking to me.'
+        : 'Someone who won’t wake but is breathing: lie them on their side and stay with them. Don’t give them anything more. I’m still here.') + '</p>';
+    log.appendChild(card);
+    scroll();
+  }
 
   /* ── talking to the service ── */
   function contents() {
@@ -494,7 +560,7 @@
       contents: contents(),
       generationConfig: Object.assign({ temperature: 0.8, maxOutputTokens: 900 }, c.model.cfg),
     };
-    return fetch(ENDPOINT + c.model.id + ':streamGenerateContent?alt=sse&key=' + encodeURIComponent(LINES[c.line]), {
+    return fetch(PROXY + '?model=' + encodeURIComponent(c.model.id) + '&line=' + hint(), {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctrl ? ctrl.signal : undefined,
     }).then(function (res) {
       if (!res.ok) {
@@ -504,6 +570,8 @@
           throw { status: res.status, err: err };
         });
       }
+      var line = res.headers.get('X-Line');
+      if (line != null) put('localStorage', 'abwh-hint', parseInt(line, 10) || 0);
       /* stream: the words arrive as they are written */
       var reader = res.body.getReader(), dec = new TextDecoder(), buf = '', text = '', blocked = false;
       function pump() {
@@ -539,12 +607,12 @@
 
   function reply() {
     var queue = plan(), typing = bubble('model', ''), got = false, crowded = false;
-    typing.innerHTML = '<span class="cc-typing" aria-label="The counsellor is typing"><i></i><i></i><i></i></span>';
+    typing.innerHTML = TYPING;
     status('Typing…');
     function next() {
       var c = queue.shift();
       if (!c) return Promise.reject('none');
-      return attempt(c, function (t) { got = true; typing.innerHTML = md(t); scroll(); }).then(function (text) {
+      return attempt(c, function (t) { got = true; typing.classList.add('is-streaming'); typing.innerHTML = md(t); scroll(); }).then(function (text) {
         return { text: text, line: c.line };
       }, function (f) {
         if (got) return Promise.reject('broken'); // half a reply came; don't start a second one under it
@@ -570,6 +638,7 @@
       msgs.push({ r: 'model', t: r.text });
       commit();
       spend();
+      typing.classList.remove('is-streaming');
       typing.innerHTML = md(r.text);
       showQuota();
       if (!left()) nudgeLimit();
@@ -592,12 +661,15 @@
     text = (text || '').trim();
     if (!text || busy) return;
     if (!left()) { showQuota(); nudgeLimit(); return; }
+    finishGreet();
+    if (rec) rec.stop();
     busy = true; root.classList.add('is-busy'); sendBtn.disabled = true;
     chips([]);
     msgs.push({ r: 'user', t: text.slice(0, 1500) });
     commit();
     bubble('user', text);
-    if (DANGER.test(text)) bubble('model', DANGER_CARD);
+    var k = danger(text);
+    if (k) crisis(k);
     reply().then(done, done);
     function done() {
       busy = false; root.classList.remove('is-busy'); syncSend();
@@ -608,7 +680,69 @@
   }
 
   /* ── wiring ── */
-  form.addEventListener('submit', function (e) { e.preventDefault(); var t = input.value; if (!left()) { send(t); return; } input.value = ''; grow(); send(t); });
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var t = input.value;
+    if (!left()) { send(t); return; }
+    if (t.trim() && !busy) { sendBtn.classList.remove('is-sent'); void sendBtn.offsetWidth; sendBtn.classList.add('is-sent'); }
+    input.value = ''; grow(); send(t);
+  });
+
+  /* ── talking instead of typing ──
+     The browser's own speech service turns speech into words in the box,
+     in English, Hindi or Tamil (the small button beside the box picks
+     which); nothing is sent until the person presses send. Only shown
+     where the browser can do it. */
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var micBtn = root.querySelector('[data-cc-mic]'), langBtn = root.querySelector('[data-cc-lang]');
+  var LANGS = [{ c: 'en-IN', l: 'EN', n: 'English' }, { c: 'hi-IN', l: 'हि', n: 'Hindi' }, { c: 'ta-IN', l: 'த', n: 'Tamil' }];
+  var langI = (get('localStorage', 'abwh-voice', 0) || 0) % LANGS.length;
+  var rec = null, said = '', statusT = 0;
+  function flash(t) { clearTimeout(statusT); status(t); statusT = setTimeout(function () { if (!busy && !rec) status('Online · private chat'); }, 4000); }
+  function showLang() {
+    var L = LANGS[langI];
+    langBtn.textContent = L.l;
+    langBtn.setAttribute('aria-label', 'Speaking in ' + L.n + '. Tap to change the language');
+    langBtn.title = 'Speaking in ' + L.n;
+    input.lang = L.c.slice(0, 2);
+  }
+  if (SR && micBtn && langBtn) {
+    micBtn.hidden = false; langBtn.hidden = false; showLang();
+    langBtn.addEventListener('click', function () {
+      langI = (langI + 1) % LANGS.length; put('localStorage', 'abwh-voice', langI); showLang();
+      langBtn.classList.remove('is-flip'); void langBtn.offsetWidth; langBtn.classList.add('is-flip');
+      flash('Voice: ' + LANGS[langI].n);
+      if (rec) rec.stop();
+    });
+    micBtn.addEventListener('mousedown', function (e) { e.preventDefault(); });
+    micBtn.addEventListener('click', function () {
+      if (rec) { rec.stop(); return; }
+      if (input.disabled) { nudgeLimit(); return; }
+      try { rec = new SR(); } catch (e) { rec = null; return; }
+      rec.lang = LANGS[langI].c; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
+      said = input.value.trim() ? input.value.replace(/\s*$/, ' ') : '';
+      rec.onresult = function (e) {
+        var t = '';
+        for (var i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
+        input.value = said + t; grow();
+      };
+      rec.onerror = function (e) {
+        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') flash('The microphone is blocked. Allow it in the browser to talk.');
+        else if (e.error === 'no-speech') flash('I didn’t hear anything. Tap the microphone and try again.');
+        else if (e.error === 'network') flash('Voice typing needs the internet.');
+      };
+      rec.onend = function () {
+        rec = null; root.classList.remove('is-listening'); micBtn.setAttribute('aria-pressed', 'false');
+        micBtn.setAttribute('aria-label', 'Speak instead of typing');
+        if (!busy) status('Online · private chat');
+        syncSend();
+      };
+      try { rec.start(); } catch (e) { rec = null; return; }
+      root.classList.add('is-listening'); micBtn.setAttribute('aria-pressed', 'true');
+      micBtn.setAttribute('aria-label', 'Stop listening');
+      clearTimeout(statusT); status('Listening… speak in ' + LANGS[langI].n);
+    });
+  }
   input.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit ? form.requestSubmit() : form.dispatchEvent(new Event('submit')); }
   });
@@ -626,11 +760,11 @@
   /* another tab may have changed the history or used messages */
   window.addEventListener('storage', function (e) {
     if (busy || !e.key || e.key.indexOf('abwh-') !== 0) return;
-    if (e.key === CHATS) { chats = get('localStorage', CHATS, []); cur = cur && find(cur.id); msgs = cur ? cur.msgs : []; renderAll(); if (!histPanel.hidden) renderHist(); }
+    if (e.key === CHATS) { chats = get('localStorage', CHATS, []); cur = cur && find(cur.id); msgs = cur ? cur.msgs : []; renderAll(false); if (!histPanel.hidden) renderHist(); }
     if (e.key === 'abwh-quota') showQuota();
   });
 
-  renderAll();
+  renderAll(true);
   showQuota();
   syncSend();
 })();
