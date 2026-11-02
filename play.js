@@ -193,10 +193,10 @@
     var res = box.querySelector('.chk__res');
     var shield = document.querySelector('[data-shield]');
     var segs = shield ? $$('[data-seg]', shield) : [];
-    var picks = [], i = 0;
+    var picks = [], i = 0, paper = box.hasAttribute('data-paper');
     box.classList.add('is-js');
     function show() {
-      steps.forEach(function (s, k) { s.classList.toggle('is-cur', k === i); });
+      steps.forEach(function (s, k) { s.classList.toggle('is-cur', k === i); s.classList.toggle('is-done', k < i); s.classList.toggle('is-later', k > i); });
       dots.forEach(function (d, k) {
         var p = picks[k];
         d.className = p ? (p.v === 'kid' || p.v === 'adult' ? 'is-done' : 'is-' + p.v) : '';
@@ -204,7 +204,7 @@
       segs.forEach(function (s, k) { var p = picks[k]; s.setAttribute('class', 'shield__seg' + (p ? ' is-' + p.v : '')); });
     }
     function verdict() {
-      steps.forEach(function (s) { s.classList.remove('is-cur'); });
+      if (!paper) steps.forEach(function (s) { s.classList.remove('is-cur'); });
       var law = picks.slice(0, 3), no = law.some(function (p) { return p.v === 'no'; });
       var v = box.querySelector('[data-verdict]');
       v.textContent = no ? 'Section 64A does not reach this.' : 'Section 64A is on your side.';
@@ -221,11 +221,15 @@
       box.querySelector('[data-kid]').hidden = !(picks[3] && picks[3].v === 'kid');
       res.hidden = false;
       if (shield) { shield.classList.toggle('is-yes', !no); shield.classList.toggle('is-nope', no); }
+      box.setAttribute('data-verdict', no ? 'no' : 'yes');
+      var st = box.querySelector('[data-stamp-t]'); if (st) st.textContent = no ? 'Not covered' : 'Covered';
       if (phone.matches) glide(box, 80);
     }
     $$('.chk__o', box).forEach(function (o) {
       o.addEventListener('click', function () {
         var k = steps.indexOf(o.closest('.chk__step'));
+        if (paper && k !== i) return;
+        $$('.chk__o', steps[k]).forEach(function (x) { x.classList.toggle('is-picked', x === o); });
         picks[k] = { v: o.getAttribute('data-v'), note: o.getAttribute('data-note') };
         picks.length = k + 1;
         i = k + 1;
@@ -234,7 +238,8 @@
       });
     });
     box.querySelector('[data-redo]').addEventListener('click', function () {
-      picks = []; i = 0; res.hidden = true;
+      picks = []; i = 0; res.hidden = true; box.removeAttribute('data-verdict');
+      $$('.chk__o', box).forEach(function (x) { x.classList.remove('is-picked'); });
       if (shield) shield.classList.remove('is-yes', 'is-nope');
       show();
     });
