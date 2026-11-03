@@ -242,7 +242,15 @@
     var ans = +g.getAttribute('data-answer');
     var sec = g.closest('section');
     if (sec) sec.classList.add('has-guess');
-    inp.addEventListener('input', function () { out.textContent = inp.value; });
+    /* the guess is drawn on the chart itself, square by square, as the slider moves */
+    var cells = $$('.waffle__grid span'), mine = document.querySelector('[data-waffle-mine]');
+    function draw() {
+      var v = +inp.value;
+      out.textContent = v; inp.style.setProperty('--v', v + '%');
+      cells.forEach(function (c, i) { c.classList.toggle('g', i < v); });
+      if (mine) mine.textContent = v;
+    }
+    inp.addEventListener('input', draw); draw();
     g.querySelector('[data-guess-go]').addEventListener('click', function () {
       var v = +inp.value, d = Math.abs(v - ans);
       res.hidden = false;
