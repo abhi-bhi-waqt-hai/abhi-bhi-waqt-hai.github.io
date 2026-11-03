@@ -3,8 +3,8 @@
    classic script, not a module, so it also runs when the built site is
    opened straight from a folder. Nothing here is saved or sent anywhere,
    except two small things kept on this device: how many urges the timer has
-   seen out, and nothing else. Find help near me sends only the point to
-   search around to the public map service (OpenStreetMap's Overpass). */
+   seen out, and nothing else. Find help near me hands its search to
+   Google Maps, and nothing else. */
 (function () {
   'use strict';
 
@@ -350,209 +350,79 @@
   })();
 
   /* ════════════════════════ 3 · HELP NEAR ME ════════════════════════
-     From the device's location (or, for a judge on a computer, a sample
-     city): hospitals, de-addiction and mental-health places nearby, drawn
-     round the reader like embers round a lamp, and listed nearest first.
-     Live from OpenStreetMap; the sample cities are saved with the site
-     (data/near.js), so the demo works without a connection too. */
-  var near = $('[data-near]');
-  if (near) (function () {
-    var DATA = window.NEAR_DATA || { cities: {} };
-    var CITIES = Object.keys(DATA.cities).map(function (id) { var c = DATA.cities[id]; return { id: id, name: c.name, lat: c.lat, lng: c.lng }; });
-    var MIRRORS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
+     Two questions: where you are (typed, or this device's location) and
+     what you need. Each kind of place is a link that opens Google Maps in a
+     new tab with the search already done: "De-addiction centre near me", or
+     "De-addiction centre in Erode or nearby". The map beside it shows the
+     same search as you point at each one. */
+  var nf = $('[data-nf]');
+  if (nf) (function () {
+    var place = $('[data-nf-place]', nf), msg = $('[data-nf-msg]', nf), frame = $('[data-nf-frame]', nf), blank = $('[data-nf-blank]', nf);
+    var cap = $('[data-nf-cap]', nf), open = $('[data-nf-open]', nf), qOut = $('[data-nf-q]', nf), label = $('[data-nf-label]', nf);
+    var kinds = nf.querySelectorAll('[data-nf-kind]'), at = null, shown = '', timer = 0, MSG = msg.textContent;
     var touch = window.matchMedia('(pointer: coarse)').matches;
-    var KIND = {
-      addiction: { l: 'De-addiction', c: 'k-add' },
-      mind: { l: 'Mental health', c: 'k-mind' },
-      hospital: { l: 'Hospital', c: 'k-hosp' },
-    };
-    function query(lat, lng) {
-      return '[out:json][timeout:25];(' +
-        'nwr(around:8000,' + lat + ',' + lng + ')["amenity"="hospital"];' +
-        'nwr(around:20000,' + lat + ',' + lng + ')["healthcare"~"psychiatry|psychotherapist|counselling|rehabilitation"];' +
-        'nwr(around:20000,' + lat + ',' + lng + ')["healthcare:speciality"~"psychiatry|addiction"];' +
-        'nwr(around:15000,' + lat + ',' + lng + ')["amenity"~"clinic|doctors|social_facility"]["name"~"addiction|nasha|rehab|psychiatr|mental|mind",i];' +
-        ');out center tags;';
+    function phrase(k) { return at && at.name ? k + ' in ' + at.name + ' or nearby' : k + ' near me'; }
+    function href(k) {
+      var base = 'https://www.google.com/maps/search/' + encodeURIComponent(phrase(k)).replace(/%20/g, '+');
+      return at && at.lat != null ? base + '/@' + at.lat.toFixed(4) + ',' + at.lng.toFixed(4) + ',13z' : base;
     }
-    function kind(t) {
-      var name = (t.name || t['name:en'] || ''), lo = name.toLowerCase(), care = ((t.healthcare || '') + ' ' + (t['healthcare:speciality'] || '')).toLowerCase();
-      var hosp = t.amenity === 'hospital' || /hospital/.test(t.healthcare || '');
-      if (/physio|ortho|spine|stroke|cardi|\beye\b|dental|derma|cosmetic|fertility|ivf|veterinar|animal|pet /.test(lo)) return hosp ? 'hospital' : null;
-      if (/de-?addiction|nasha|addiction|drug|alcohol|\birca\b|\bodic\b|rehab(ilitation)? cent/.test(lo) || /addiction/.test(care)) return 'addiction';
-      if (/psychiatr|mental|psycholog|counsel|nimhans|\bimh\b|\bmind\b/.test(lo) || /psychiatry|psychotherapist|counselling/.test(care)) return 'mind';
-      if (hosp) return 'hospital';
-      return null;
+    function embed(k) {
+      var q = at && at.lat != null ? k + ' near ' + at.lat.toFixed(4) + ',' + at.lng.toFixed(4) : phrase(k);
+      return 'https://maps.google.com/maps?q=' + encodeURIComponent(q) + '&z=12&output=embed';
     }
-    function gov(t) {
-      var s = ((t.name || '') + ' ' + (t['name:en'] || '') + ' ' + (t.operator || '')).toLowerCase();
-      return /government|govt|\bg\.?h\b|district|medical college|aiims|\besi\b|esic|municipal|corporation|primary health|\bphc\b|\bchc\b|taluk|railway|jipmer|nimhans|institute of mental health|civil hospital|general hospital|state/.test(s) ||
-        t['operator:type'] === 'government' || t['operator:type'] === 'public';
+    function preview(k) {
+      clearTimeout(timer);
+      nf.querySelectorAll('[data-nf-kind]').forEach(function (a) { a.classList.toggle('is-hot', a.getAttribute('data-nf-kind') === k); });
+      cap.textContent = phrase(k);
+      open.href = href(k);
+      qOut.textContent = phrase(k);
+      timer = setTimeout(function () {
+        if (!at.name && at.lat == null) { blank.querySelector('p').textContent = 'Google Maps will find where you are when it opens, and search around you.'; nf.classList.remove('has-map'); shown = ''; return; }
+        if (!navigator.onLine) { blank.querySelector('p').textContent = 'You’re offline, so the map can’t load. It opens once you’re back online; 14446 works without the internet.'; return; }
+        var u = embed(k);
+        if (u === shown) return;
+        shown = u; frame.src = u; nf.classList.add('has-map');
+      }, 220);
     }
-    function dist(a, b) {
-      var R = 6371, dLat = (b.lat - a.lat) * Math.PI / 180, dLng = (b.lng - a.lng) * Math.PI / 180;
-      var x = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
-      return 2 * R * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+    function step(n) {
+      nf.querySelectorAll('[data-nf-step]').forEach(function (x) { x.hidden = x.getAttribute('data-nf-step') !== String(n); });
+      nf.querySelectorAll('[data-nf-dot]').forEach(function (x) { x.classList.toggle('is-on', +x.getAttribute('data-nf-dot') <= n); });
+      nf.setAttribute('data-at', n);
     }
-    function bearing(a, b) {
-      var y = Math.sin((b.lng - a.lng) * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180);
-      var x = Math.cos(a.lat * Math.PI / 180) * Math.sin(b.lat * Math.PI / 180) - Math.sin(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * Math.cos((b.lng - a.lng) * Math.PI / 180);
-      return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    function go(where) {
+      at = where;
+      label.textContent = at.name ? 'in ' + at.name + ' or nearby' : 'near you';
+      kinds.forEach(function (a) { a.href = href(a.getAttribute('data-nf-kind')); });
+      step(2);
+      preview(kinds[0].getAttribute('data-nf-kind'));
+      if (!touch) kinds[0].focus({ preventScroll: true });
     }
-    var DIRS = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
-    function km(d) { return d < 1 ? Math.round(d * 1000 / 10) * 10 + ' m' : d.toFixed(d < 10 ? 1 : 0) + ' km'; }
-
-    function start() {
-      near.innerHTML = '<div class="n-start">' +
-        '<div class="n-radar n-radar--idle" aria-hidden="true">' + radar([], null) + '</div>' +
-        '<div class="n-start__b">' +
-          '<button type="button" class="n-go" data-n="locate"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 2v3M12 19v3M2 12h3M19 12h3M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM12 14.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>Use my location</button>' +
-          (CITIES.length ? '<p class="n-or">' + (touch ? 'or try a sample city' : 'On a computer? Try a sample city (expo demo)') + '</p>' +
-          '<div class="n-cities">' + CITIES.map(function (c) { return '<button type="button" data-city="' + c.id + '">' + esc(c.name) + '</button>'; }).join('') + '</div>' : '') +
-          '<p class="n-note">Your location is used only to search. It is never saved.</p>' +
-        '</div></div>' + lines();
-    }
-    function lines() {
-      return '<div class="n-lines"><a href="tel:14446"><b>14446</b><span>Your nearest government centre</span></a><a href="tel:14416"><b>14416</b><span>Tele-MANAS · 24 hours</span></a><a href="tel:112"><b>112</b><span>Emergency</span></a></div>';
-    }
-    function busy(msg) {
-      near.innerHTML = '<div class="n-start"><div class="n-radar n-radar--scan" aria-hidden="true">' + radar([], null) + '</div><div class="n-start__b"><p class="n-busy" role="status">' + msg + '</p></div></div>' + lines();
-    }
-    function fail(msg) {
-      start();
-      var b = near.querySelector('.n-start__b');
-      b.insertAdjacentHTML('afterbegin', '<p class="n-err" role="alert">' + msg + '</p>');
-    }
-    function locate() {
-      if (!navigator.geolocation) { fail('This browser can’t share its location. Try a sample city, or call 14446 to find your nearest centre.'); return; }
-      busy('Finding where you are…');
-      navigator.geolocation.getCurrentPosition(function (p) {
-        search({ lat: p.coords.latitude, lng: p.coords.longitude }, 'Near you', false);
-      }, function (e) {
-        fail(e.code === 1 ? 'Location is switched off for this site. Allow it in your browser, or try a sample city.' : 'Couldn’t find your location just now. Try again, or pick a sample city.');
-      }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 });
-    }
-    function ask(q) {
-      var i = 0;
-      function next() {
-        if (i >= MIRRORS.length) return Promise.reject('none');
-        var m = MIRRORS[i++], ctrl = window.AbortController ? new AbortController() : null;
-        var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 22000);
-        return fetch(m, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: ctrl ? ctrl.signal : undefined })
-          .then(function (r) { clearTimeout(timer); if (!r.ok) throw r.status; return r.json(); })
-          .then(function (j) { if (j.remark && /error|timed out/i.test(j.remark)) throw j.remark; return j; })
-          .catch(function () { clearTimeout(timer); return next(); });
-      }
-      return next();
-    }
-    function search(at, label, demo) {
-      busy(demo ? 'Looking around ' + esc(label) + '…' : 'Looking for help around you…');
-      ask(query(at.lat.toFixed(5), at.lng.toFixed(5))).then(function (j) {
-        var raw = (j.elements || []).map(function (e) {
-          var lat = e.lat != null ? e.lat : e.center && e.center.lat, lng = e.lon != null ? e.lon : e.center && e.center.lon;
-          return lat == null ? null : { lat: lat, lng: lng, t: e.tags || {} };
-        }).filter(Boolean);
-        show(at, label, raw, demo, false);
-      }, function () {
-        /* offline, or the map service is busy: a saved city if one is close */
-        var best = null, bd = Infinity;
-        CITIES.forEach(function (c) { var d = dist(at, c); if (d < bd) { bd = d; best = c; } });
-        if (best && (demo || bd < 60)) show(demo ? at : best, demo ? label : best.name, DATA.cities[best.id].places, demo, true);
-        else fail('The map service didn’t answer just now. Check your internet and try again, or call 14446: they will tell you your nearest government centre.');
-      });
-    }
-    function city(id) {
-      var c = DATA.cities[id];
-      if (!c) return;
-      /* the saved places first, at once; then a fresh look if online */
-      show({ lat: c.lat, lng: c.lng }, c.name, c.places, true, true);
-    }
-    var current = null;
-    function show(at, label, raw, demo, saved) {
-      var seen = {}, all = [];
-      raw.forEach(function (p) {
-        var t = p.t || {}, name = t['name:en'] || t.name;
-        if (!name) return;
-        var k = kind(t);
-        if (!k) return;
-        var key = name.toLowerCase().replace(/\W+/g, '');
-        if (seen[key]) return;
-        seen[key] = 1;
-        var d = dist(at, p);
-        all.push({ name: name, k: k, gov: gov(t), d: d, b: bearing(at, p), lat: p.lat, lng: p.lng, ph: (t.phone || t['contact:phone'] || '').split(/[;,]/)[0].trim(), street: t['addr:street'] || '' });
-      });
-      all.sort(function (a, b) { return a.d - b.d; });
-      var special = all.filter(function (p) { return p.k !== 'hospital'; }).slice(0, 8);
-      var hosp = all.filter(function (p) { return p.k === 'hospital'; });
-      /* government hospitals first among the near ones: that is where the
-         Addiction Treatment Facilities are */
-      var nearH = hosp.slice(0, 12).sort(function (a, b) { return (b.gov - a.gov) || (a.d - b.d); }).slice(0, 6);
-      var list = special.concat(nearH).sort(function (a, b) { return a.d - b.d; });
-      current = { at: at, list: list, filter: 'all' };
-      if (!list.length) {
-        fail('No places are marked on the public map near ' + esc(label) + ' yet. Call 14446: they know every government centre and will tell you the nearest one.');
-        return;
-      }
-      near.innerHTML =
-        '<div class="n-top"><p class="n-where">' + (demo ? '<span class="n-demo">Expo demo</span>' : '') + '<b>' + esc(label) + '</b> · ' + list.length + ' places within ' + km(Math.max.apply(null, list.map(function (p) { return p.d; }))) + '</p>' +
-        '<button type="button" class="n-ghost" data-n="restart">Change place</button></div>' +
-        '<div class="n-res"><div class="n-radar" aria-hidden="true">' + radar(list, at) + '</div>' +
-        '<div class="n-side"><div class="n-filters" role="group" aria-label="Show">' +
-          [['all', 'All'], ['addiction', 'De-addiction'], ['mind', 'Mental health'], ['hospital', 'Hospitals']].map(function (f) {
-            var n = f[0] === 'all' ? list.length : list.filter(function (p) { return p.k === f[0]; }).length;
-            return '<button type="button" data-f="' + f[0] + '" class="' + (f[0] === 'all' ? 'is-on' : '') + '"' + (n ? '' : ' disabled') + '>' + f[1] + ' <i>' + n + '</i></button>';
-          }).join('') + '</div>' +
-        '<ol class="n-list" role="list">' + list.map(function (p, i) {
-          return '<li class="n-p ' + KIND[p.k].c + '" data-i="' + i + '" style="--i:' + i + '">' +
-            '<span class="n-p__dot" aria-hidden="true"></span>' +
-            '<div class="n-p__b"><p class="n-p__n">' + esc(p.name) + '</p>' +
-            '<p class="n-p__m"><span class="n-tag">' + KIND[p.k].l + '</span>' + (p.gov ? '<span class="n-tag n-tag--gov">Government</span>' : '') + '<span>' + km(p.d) + ' ' + DIRS[Math.round(p.b / 45) % 8] + '</span></p>' +
-            '<p class="n-p__a"><a href="https://www.google.com/maps/dir/?api=1&destination=' + p.lat.toFixed(5) + ',' + p.lng.toFixed(5) + '" target="_blank" rel="noopener noreferrer">Directions ↗</a>' +
-            (p.ph ? '<a href="tel:' + esc(p.ph.replace(/[^\d+]/g, '')) + '">Call</a>' : '') + '</p></div></li>';
-        }).join('') + '</ol></div></div>' +
-        '<p class="n-fine">Places from OpenStreetMap, a public map anyone can edit' + (saved && DATA.fetched ? ' (saved ' + esc(DATA.fetched) + ')' : '') + '. It may be out of date and is not a list of approved centres: always call before you go. Government hospitals often have an Addiction Treatment Facility inside; ask for it. 14446 knows every recognised centre.</p>' +
-        lines();
-      if (!reduced) near.querySelector('.n-res').classList.add('is-in');
-    }
-    /* the radar: the reader at the centre, a lamp; places as embers, at
-       their real direction, nearer ones nearer the middle */
-    function radar(list, at) {
-      var max = list.length ? Math.max(5, Math.max.apply(null, list.map(function (p) { return p.d; }))) : 20;
-      var rings = [1, 2, 5, 10, 20].filter(function (r) { return r <= max * 1.05; });
-      if (!rings.length || rings[rings.length - 1] < max) rings.push(Math.ceil(max));
-      var R = 132, sc = function (d) { return Math.sqrt(Math.min(d, max) / max) * R; };
-      var s = '<svg viewBox="0 0 300 300"><defs><radialGradient id="nGlow"><stop offset="0" stop-color="#ffd890" stop-opacity=".9"/><stop offset=".35" stop-color="#e2a24e" stop-opacity=".35"/><stop offset="1" stop-color="#e2a24e" stop-opacity="0"/></radialGradient>' +
-        '<linearGradient id="nSweep" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#d1a866" stop-opacity="0"/><stop offset="1" stop-color="#d1a866" stop-opacity=".35"/></linearGradient></defs>';
-      rings.forEach(function (r) {
-        var rr = sc(r);
-        s += '<circle cx="150" cy="150" r="' + rr.toFixed(1) + '" class="n-ring"/>' + (list.length ? '<text x="' + (150 + rr * .707 + 3).toFixed(1) + '" y="' + (150 - rr * .707 - 3).toFixed(1) + '" class="n-rl">' + r + ' km</text>' : '');
-      });
-      s += '<path d="M150 18V282M18 150H282" class="n-axis"/><text x="150" y="12" class="n-nl">N</text>';
-      s += '<g class="n-sweep"><path d="M150 150 L282 150 A132 132 0 0 0 243.3 56.7 Z" fill="url(#nSweep)"/></g>';
-      s += '<circle cx="150" cy="150" r="46" fill="url(#nGlow)" class="n-you-glow"/><circle cx="150" cy="150" r="5" class="n-you"/>';
-      list.forEach(function (p, i) {
-        var a = (p.b - 90) * Math.PI / 180, r = sc(p.d), x = 150 + Math.cos(a) * r, y = 150 + Math.sin(a) * r;
-        s += '<g class="n-dot ' + KIND[p.k].c + '" data-i="' + i + '" style="--i:' + i + '"><circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="11" class="n-dot__halo"/><circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="4.5" class="n-dot__c"/></g>';
-      });
-      return s + '</svg>';
-    }
-    function pick(i) {
-      near.querySelectorAll('.n-p, .n-dot').forEach(function (x) { x.classList.toggle('is-pick', x.dataset.i === String(i)); });
-      var li = near.querySelector('.n-p[data-i="' + i + '"]');
-      if (li) { var list = near.querySelector('.n-list'); list.scrollTo({ top: li.offsetTop - list.offsetTop - 8, behavior: reduced ? 'auto' : 'smooth' }); }
-    }
-    near.addEventListener('click', function (e) {
-      var b = e.target.closest('button, .n-dot, .n-p');
-      if (!b || !near.contains(b)) return;
-      if (b.dataset.n === 'locate') locate();
-      else if (b.dataset.n === 'restart') start();
-      else if (b.dataset.city) city(b.dataset.city);
-      else if (b.dataset.f) {
-        var f = b.dataset.f;
-        near.querySelectorAll('[data-f]').forEach(function (x) { x.classList.toggle('is-on', x === b); });
-        near.querySelectorAll('.n-p, .n-dot').forEach(function (x) { var p = current.list[+x.dataset.i]; x.classList.toggle('is-hid', f !== 'all' && p.k !== f); });
-      } else if (b.classList.contains('n-dot')) pick(b.dataset.i);
-      else if (b.classList.contains('n-p') && !e.target.closest('a')) pick(b.dataset.i);
+    $('[data-nf-form]', nf).addEventListener('submit', function (e) {
+      e.preventDefault();
+      var v = place.value.replace(/\s+/g, ' ').trim();
+      if (!v) { msg.textContent = 'Type a town, city or district first, or use your location.'; msg.classList.add('is-err'); place.focus(); return; }
+      msg.textContent = MSG; msg.classList.remove('is-err');
+      go({ name: v.replace(/(^|\s)\S/g, function (c) { return c.toUpperCase(); }) });
     });
-    start();
+    $('[data-nf-locate]', nf).addEventListener('click', function () {
+      var btn = this;
+      msg.classList.remove('is-err');
+      if (!navigator.geolocation) { go({}); return; }
+      btn.classList.add('is-busy'); msg.textContent = 'Finding where you are…';
+      navigator.geolocation.getCurrentPosition(function (p) {
+        btn.classList.remove('is-busy'); msg.textContent = MSG;
+        go({ lat: p.coords.latitude, lng: p.coords.longitude });
+      }, function () {
+        /* no location here: Google Maps can still find "near me" itself */
+        btn.classList.remove('is-busy'); msg.textContent = MSG;
+        go({});
+      }, { enableHighAccuracy: false, timeout: 12000, maximumAge: 300000 });
+    });
+    $('[data-nf-back]', nf).addEventListener('click', function () { step(1); place.focus(); });
+    kinds.forEach(function (a) {
+      var k = a.getAttribute('data-nf-kind');
+      a.addEventListener('mouseenter', function () { preview(k); });
+      a.addEventListener('focus', function () { preview(k); });
+    });
   })();
 })();

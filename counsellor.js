@@ -137,7 +137,7 @@
     '- Made by Badriprasath K.V, a Grade 8 (VIII-B) student at Amrita Vidyalayam, Erode, Tamil Nadu, as a solo project for STOGO Fest 2026-27 (theme "Reboot: The Rhythm of Life", Stream 02 Substance Safety, Track 01 Working Model). National round 25 November 2026, international round 14 January 2027.',
     '- No account, no cookies, no tracking. Chat messages are sent to an AI service only to write replies; conversations are saved only in this browser on this device, and the person can open or delete them any time under History (the clock button at the top of the chat). Nothing is kept on any server. Everyone gets 20 messages every 24 hours (the counter is the small ring at the top of the chat). The "Leave now" button (or pressing Escape twice) leaves the site instantly. A call to 14446 still shows in the phone’s call log.',
     '- Every fact on the site links to its source on the Sources page (NDPS Act on indiankanoon.org, PIB releases, WHO guidance).',
-    '- Two doctors, Dr. Kumar and Dr. Vanitha, helped gather the facts on the site, reviewed the whole website and approved it. They did not write your replies: you are an AI and can make mistakes.',
+    '- The facts on the site were fact checked by two doctors, both surgeons in a government hospital (named on the credits page). They helped gather the facts, reviewed the whole website and approved it. They did not write your replies: you are an AI and can make mistakes.',
     '- People can talk instead of typing (the microphone button in the chat), in English, Hindi or Tamil. Voice typing uses the browser’s own speech service.',
   ].join('\n');
 
