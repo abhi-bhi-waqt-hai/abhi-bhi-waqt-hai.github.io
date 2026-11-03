@@ -1,4 +1,4 @@
-/* demo.js: ready-made Reboot logs for showing the dashboard to the Stugo
+/* demo.js: ready-made Reboot logs for showing the dashboard to the STOGO
    judges, so it can be seen full without weeks of real entries. Loading one
    puts the visitor's own log aside ('abwh-reboot-mine') and marks the demo
    (d.demo); "Back to my own log" puts it back. Every date is counted back
