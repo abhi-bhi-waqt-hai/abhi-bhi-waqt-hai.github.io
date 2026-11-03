@@ -246,7 +246,7 @@
     var cells = $$('.waffle__grid span'), mine = document.querySelector('[data-waffle-mine]');
     function draw() {
       var v = +inp.value;
-      out.textContent = v; inp.style.setProperty('--v', v + '%');
+      out.textContent = v; var dial = g.querySelector('[data-guess-dial]'); if (dial) dial.style.setProperty('--v', v);
       cells.forEach(function (c, i) { c.classList.toggle('g', i < v); });
       if (mine) mine.textContent = v;
     }
