@@ -5,15 +5,14 @@
 
    The shape:
    { what, unit, base, goal, start,
-     logs: { 'YYYY-MM-DD': { amt, mood 1-5, feel better|same|worse, crave 0-10, why: [t] } },
-     focus, steps: [{ t, done }], badges: [{ t, why, d }], tips: [t], sos,
-     seals: [key] (the page's own milestones already shown as earned) } */
+     logs: { 'YYYY-MM-DD': { amt, mood 1-5, feel better|same|worse } },
+     focus, steps: [{ t, done }], badges: [{ t, why, d }], tips: [t], sos } */
 (function () {
   var KEY = 'abwh-reboot';
   var UNITS = { alcohol: 'drinks', cannabis: 'joints', tobacco: 'cigarettes', pills: 'pills', other: 'times' };
   var NAMES = { alcohol: 'Alcohol', cannabis: 'Cannabis / ganja', tobacco: 'Tobacco', pills: 'Pills', other: 'Something else' };
 
-  function blank() { return { what: '', unit: '', base: 0, goal: 0, start: '', logs: {}, focus: '', steps: [], badges: [], tips: [], sos: false, seals: [] }; }
+  function blank() { return { what: '', unit: '', base: 0, goal: 0, start: '', logs: {}, focus: '', steps: [], badges: [], tips: [], sos: false }; }
   function load(ls) {
     ls = ls || (typeof localStorage !== 'undefined' ? localStorage : null);
     try { var d = JSON.parse(ls.getItem(KEY) || 'null'); if (d && typeof d === 'object') return Object.assign(blank(), d); } catch (e) {}

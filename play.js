@@ -71,6 +71,119 @@
   window.abwhLamp = LAMP;
   $$('[data-lamp]').forEach(function (s) { s.innerHTML = LAMP; });
 
+  /* ── the deck: say what tonight is, then one card at a time ──
+     [data-deck] holds buttons with data-path and .card elements with
+     data-in="path path". The cards that belong to the chosen path become
+     the deck; .card--end (if there is one) closes it. */
+  $$('[data-deck]').forEach(function (box) {
+    var deck = box.querySelector('.deck');
+    var stack = deck.querySelector('.deck__stack');
+    var cards = $$('.card[data-in]', deck);
+    var end = deck.querySelector('.card--end');
+    var lamps = deck.querySelector('.lamps');
+    var prev = deck.querySelector('[data-prev]');
+    var next = deck.querySelector('[data-next]');
+    var tally = deck.querySelector('.deck__count');
+    var live = deck.querySelector('[data-live]');
+    var ends = {};
+    try { ends = JSON.parse(box.querySelector('[data-ends]').textContent); } catch (e) {}
+    var list = [], i = 0, path = null;
+    deck.classList.add('is-js');
+
+    function choose(p, btn) {
+      path = p;
+      list = cards.filter(function (c) { return (' ' + c.getAttribute('data-in') + ' ').indexOf(' ' + p + ' ') > -1; });
+      var e = ends[p];
+      if (e && end) {
+        end.querySelector('.card__t').textContent = e.t;
+        var a = end.querySelector('.card__act');
+        a.href = e.href; a.querySelector('span').textContent = e.l;
+        list.push(end);
+      }
+      $$('[data-path]', box).forEach(function (b) { b.setAttribute('aria-pressed', String(b === btn)); });
+      deck.classList.add('has-path');
+      deck.classList.toggle('is-one', list.length === 1);
+      deck.setAttribute('data-path', p);
+      var n = list.length - (e && end ? 1 : 0);
+      lamps.innerHTML = '';
+      for (var k = 0; k < n; k++) { var li = document.createElement('li'); li.className = 'lamp'; li.innerHTML = LAMP; lamps.appendChild(li); }
+      cards.concat(end ? [end] : []).forEach(function (c) { c.className = c.className.replace(/\s?is-(cur|n1|n2|past)/g, ''); });
+      i = 0;
+      show(true);
+      if (phone.matches) setTimeout(function () { glide(deck, 76); }, 60);
+    }
+
+    function show(fresh) {
+      list.forEach(function (c, k) {
+        c.classList.toggle('is-cur', k === i);
+        c.classList.toggle('is-n1', k === i + 1);
+        c.classList.toggle('is-n2', k === i + 2);
+        c.classList.toggle('is-past', k < i);
+        c.setAttribute('aria-hidden', String(k !== i));
+        c.style.transform = '';
+      });
+      var cur = list[i];
+      draw(cur.querySelector('.gl'));
+      $$('.lamp', lamps).forEach(function (l, k) {
+        l.classList.toggle('is-lit', k < i || cur === end);
+        l.classList.toggle('is-cur', k === i && cur !== end);
+      });
+      prev.disabled = i === 0;
+      var last = i === list.length - 1;
+      next.disabled = last;
+      next.querySelector('span').textContent = list[i + 1] === end ? 'Finish' : 'Next';
+      tally.textContent = cur === end ? 'Done' : (i + 1) + ' of ' + (list.length - (end && list.indexOf(end) > -1 ? 1 : 0));
+      if (live && !fresh) live.textContent = cur.querySelector('.card__t').textContent;
+    }
+    function go(d) {
+      var j = Math.max(0, Math.min(list.length - 1, i + d));
+      if (j === i) return;
+      i = j; show();
+    }
+
+    $$('[data-path]', box).forEach(function (b) {
+      b.addEventListener('click', function () { choose(b.getAttribute('data-path'), b); });
+    });
+    prev.addEventListener('click', function () { go(-1); });
+    next.addEventListener('click', function () { go(1); });
+    deck.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowRight') { go(1); e.preventDefault(); }
+      if (e.key === 'ArrowLeft') { go(-1); e.preventDefault(); }
+    });
+    $$('[data-again]', deck).forEach(function (b) {
+      b.addEventListener('click', function () {
+        deck.classList.remove('has-path', 'is-one');
+        $$('[data-path]', box).forEach(function (x) { x.setAttribute('aria-pressed', 'false'); });
+        cards.concat(end ? [end] : []).forEach(function (c) { c.className = c.className.replace(/\s?is-(cur|n1|n2|past)/g, ''); });
+        glide(box, 90);
+      });
+    });
+
+    /* a finger (or a mouse) can throw the card away, or pull the last one back */
+    var x0 = null, dx = 0, el = null, drag = false;
+    stack.addEventListener('pointerdown', function (e) {
+      el = e.target.closest('.card.is-cur');
+      if (!el || e.target.closest('a, button')) { el = null; return; }
+      x0 = e.clientX; dx = 0; drag = false;
+    });
+    addEventListener('pointermove', function (e) {
+      if (!el || x0 === null) return;
+      dx = e.clientX - x0;
+      if (!drag && Math.abs(dx) > 8) { drag = true; el.classList.add('is-drag'); }
+      if (drag) el.style.transform = 'translateX(' + dx + 'px) rotate(' + dx / 22 + 'deg)';
+    });
+    function up() {
+      if (!el) return;
+      el.classList.remove('is-drag');
+      var d = dx < -70 ? 1 : dx > 70 ? -1 : 0;
+      el.style.transform = '';
+      el = null; x0 = null;
+      if (d) go(d);
+    }
+    addEventListener('pointerup', up);
+    addEventListener('pointercancel', up);
+  });
+
   /* ── the law check: four taps, a shield that lights, a plain verdict ──
      Each option carries data-v (ok, warn, no; kid or adult for the age
      question) and data-note, the sentence shown in the verdict. */
@@ -133,10 +246,27 @@
     show();
   });
 
+  /* copy a piece of text, and say so on the button for a moment */
+  function copy(text, btn) {
+    var done = function () {
+      var t = btn.firstElementChild || btn, was = t.textContent;
+      btn.classList.add('is-done'); t.textContent = 'Copied';
+      setTimeout(function () { btn.classList.remove('is-done'); t.textContent = was; }, 1800);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+    else fallback();
+    function fallback() {
+      var ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch (e) {}
+      ta.remove();
+    }
+  }
+
   /* ── the place finder: age, then what feels possible ── */
   $$('[data-finder]').forEach(function (box) {
     var age = box.querySelector('[data-fd="age"]'), want = box.querySelector('[data-fd="want"]');
-    var res = box.querySelector('.fd__res'), kid = false, what = 'de-addiction centre';
+    var res = box.querySelector('.fd__res'), kid = false;
     box.classList.add('is-js');
     function step(s) { [age, want].forEach(function (x) { x.classList.toggle('is-cur', x === s); }); }
     step(age);
@@ -151,22 +281,17 @@
         $$('[data-pick]', box).forEach(function (p) {
           var on = p.getAttribute('data-pick') === k;
           p.hidden = !on;
-          if (on) { draw(p.querySelector('.gl')); count(p.querySelector('[data-count]')); what = p.getAttribute('data-map') || what; }
+          if (on) { draw(p.querySelector('.gl')); count(p.querySelector('[data-count]')); }
         });
         box.querySelector('[data-kid]').hidden = !kid;
-        q.textContent = phrase();
         if (phone.matches) glide(box, 80);
       });
     });
     box.querySelector('[data-fd-redo]').addEventListener('click', function () { res.hidden = true; step(age); });
-    /* the district goes straight into a map search for the kind of place picked */
     var dist = box.querySelector('[data-district]'), q = box.querySelector('[data-search-text]');
-    var phrase = function () { var d = dist.value.trim(); return what + (d ? ' in ' + d : ' near me'); };
+    var phrase = function () { return 'Nasha Mukt Bharat Abhiyaan' + (dist.value.trim() ? ' ' + dist.value.trim() : ''); };
     dist.addEventListener('input', function () { q.textContent = phrase(); });
-    box.querySelector('[data-map-form]').addEventListener('submit', function (e) {
-      e.preventDefault();
-      window.open('https://www.google.com/maps/search/' + encodeURIComponent(phrase()), '_blank', 'noopener');
-    });
+    box.querySelector('[data-copy-search]').addEventListener('click', function (e) { copy(phrase(), e.currentTarget); });
   });
 
   /* ── the street: one building open at a time ── */
@@ -191,28 +316,11 @@
     });
   });
 
-  /* ── the call list: keep the ticked questions for the call ──
-     A phone hands them to its own share sheet (notes, messages, yourself on
-     WhatsApp); anything without one saves them as a small text file. */
+  /* ── the call list: copy the ticked questions ── */
   $$('[data-calls]').forEach(function (box) {
-    var btn = box.querySelector('[data-save-calls]'), hint = box.querySelector('[data-calls-hint]');
-    var t = btn.firstElementChild, was = t.textContent;
-    function flash(s) { btn.classList.add('is-done'); t.textContent = s; setTimeout(function () { btn.classList.remove('is-done'); t.textContent = was; }, 2200); }
-    btn.addEventListener('click', function () {
+    box.querySelector('[data-copy-calls]').addEventListener('click', function (e) {
       var qs = $$('input:checked', box).map(function (i, k) { return (k + 1) + '. ' + i.value; });
-      if (!qs.length) { hint.textContent = 'Tick at least one question first.'; return; }
-      var text = 'Questions for 14446 (free, any hour, press 1)\n\n' + qs.join('\n');
-      if (navigator.share && matchMedia('(pointer: coarse)').matches) {
-        navigator.share({ title: 'Questions for 14446', text: text }).then(function () { flash('Saved'); }, function () {});
-        return;
-      }
-      var a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([text.replace(/\n/g, '\r\n')], { type: 'text/plain' }));
-      a.download = 'questions-for-14446.txt';
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
-      flash('Saved');
-      hint.textContent = 'Saved as questions-for-14446.txt. Keep it open when you call.';
+      copy('Questions for 14446\n' + (qs.length ? qs.join('\n') : '(none ticked)'), e.currentTarget);
     });
   });
 
